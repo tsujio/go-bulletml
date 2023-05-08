@@ -27,7 +27,7 @@ type NewRunnerOptions[T Position] struct {
 	OnBulletFired         func(*Bullet) Bulleter[T]
 	OnBulletVanished      func(Bulleter[T])
 	CurrentShootPosition  func() (T, T)
-	CurrentPlayerPosition func() (T, T)
+	CurrentTargetPosition func() (T, T)
 	DefaultBulletSpeed    float64
 }
 
@@ -41,6 +41,7 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 		bulletML:       bulletML,
 		opts:           &_opts,
 		actionDefTable: make(map[string]*Action),
+		fireDefTable:   make(map[string]*Fire),
 	}
 
 	for _, c := range bulletML.Contents {
@@ -58,6 +59,10 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 			} else {
 				runner.actionDefTable[cts.Label] = &cts
 			}
+		case Fire:
+			if cts.Label != "" {
+				runner.fireDefTable[cts.Label] = &cts
+			}
 		}
 	}
 
@@ -69,6 +74,7 @@ type runner[T Position] struct {
 	opts            *NewRunnerOptions[T]
 	actionProcesses []*actionProcess[T]
 	actionDefTable  map[string]*Action
+	fireDefTable    map[string]*Fire
 }
 
 func (r *runner[T]) Update() error {
@@ -188,22 +194,44 @@ func (a *actionProcessFrame[T]) update() error {
 			} else {
 				a.repeatIndex = 0
 			}
-		case Fire:
-			switch bl := c.BulletOrRef.(type) {
+		case Fire, FireRef:
+			var fire *Fire
+			var params []float64
+			if f, ok := c.(Fire); ok {
+				fire = &f
+				params = a.params
+			} else if r, ok := c.(FireRef); ok {
+				f, exists := a.actionProcess.runner.fireDefTable[r.Label]
+				if !exists {
+					return fmt.Errorf("<fire label=\"%s\"> not found", r.Label)
+				}
+
+				for _, p := range r.Params {
+					v, err := evaluateExpr(p.Expr, a.params)
+					if err != nil {
+						return err
+					}
+					params = append(params, v)
+				}
+
+				fire = f
+			}
+
+			switch bl := fire.BulletOrRef.(type) {
 			case Bullet:
 				sx, sy := a.actionProcess.runner.opts.CurrentShootPosition()
-				tx, ty := a.actionProcess.runner.opts.CurrentPlayerPosition()
+				tx, ty := a.actionProcess.runner.opts.CurrentTargetPosition()
 
 				blt := a.actionProcess.runner.opts.OnBulletFired(&bl)
 				blt.SetX(sx)
 				blt.SetY(sy)
 
-				dir, err := calculateDirection(c.Direction, sx, sy, tx, ty, bl.Direction, a.actionProcess.latestShoot, a.params)
+				dir, err := calculateDirection(fire.Direction, sx, sy, tx, ty, bl.Direction, a.actionProcess.latestShoot, params)
 				if err != nil {
 					return err
 				}
 
-				speed, err := calculateSpeed(c.Speed, bl.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed, a.params)
+				speed, err := calculateSpeed(fire.Speed, bl.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed, params)
 				if err != nil {
 					return err
 				}
@@ -245,7 +273,7 @@ func (a *actionProcessFrame[T]) update() error {
 							p.stack = append(p.stack, &actionProcessFrame[T]{
 								action:        ba,
 								actionProcess: p,
-								params:        a.params,
+								params:        params,
 							})
 						}
 						a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
@@ -309,7 +337,7 @@ func (a *actionProcessFrame[T]) update() error {
 
 				switch c.Direction.Type {
 				case DirectionTypeAim:
-					tx, ty := a.actionProcess.runner.opts.CurrentPlayerPosition()
+					tx, ty := a.actionProcess.runner.opts.CurrentTargetPosition()
 					d := math.Atan2(float64(ty-a.actionProcess.bullet.y), float64(tx-a.actionProcess.bullet.x))
 					dir += d
 				case DirectionTypeRelative:
@@ -319,7 +347,15 @@ func (a *actionProcessFrame[T]) update() error {
 				w := a.actionProcess.ticks + uint64(term)
 				a.waitUntil = &w
 
-				a.changeDelta = (dir - current) / term
+				diff := dir - current
+				for diff > math.Pi {
+					diff -= math.Pi * 2
+				}
+				for diff < -math.Pi {
+					diff += math.Pi * 2
+				}
+
+				a.changeDelta = diff / term
 			}
 
 			if *a.waitUntil > a.actionProcess.ticks {
@@ -404,7 +440,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 		d += val * math.Pi / 180
 		return d, nil
 	case DirectionTypeAbsolute:
-		return val * math.Pi / 180, nil
+		return val*math.Pi/180 - math.Pi/2, nil
 	case DirectionTypeRelative:
 		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
 		if err != nil {

@@ -85,6 +85,10 @@ func (g *Game) Update() error {
 		}
 	}
 
+	x, y := ebiten.CursorPosition()
+	g.playerX = float64(x)
+	g.playerY = float64(y)
+
 	newBullets := make([]*bullet, 0, len(g.bullets))
 	for _, b := range g.bullets {
 		if !b.vanished {
@@ -106,9 +110,9 @@ var img = func() *ebiten.Image {
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.Black)
 
-	vector.DrawFilledCircle(screen, float32(g.playerX), float32(g.playerY), 4, color.White, true)
+	vector.DrawFilledCircle(screen, float32(g.playerX), float32(g.playerY), 4, color.RGBA{0xff, 0xff, 0, 0xff}, true)
 
-	vector.DrawFilledCircle(screen, float32(g.enemyX), float32(g.enemyY), 4, color.White, true)
+	vector.DrawFilledCircle(screen, float32(g.enemyX), float32(g.enemyY), 4, color.RGBA{0xff, 0, 0, 0xff}, true)
 
 	for _, b := range g.bullets {
 		//vector.DrawFilledCircle(screen, float32(b.x), float32(b.y), 3, color.White, true)
@@ -138,7 +142,7 @@ func (g *Game) initializeRunner() {
 		CurrentShootPosition: func() (float64, float64) {
 			return g.enemyX, g.enemyY
 		},
-		CurrentPlayerPosition: func() (float64, float64) {
+		CurrentTargetPosition: func() (float64, float64) {
 			return g.playerX, g.playerY
 		},
 	}
