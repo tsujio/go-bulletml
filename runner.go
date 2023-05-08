@@ -42,6 +42,7 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 		opts:           &_opts,
 		actionDefTable: make(map[string]*Action),
 		fireDefTable:   make(map[string]*Fire),
+		bulletDefTable: make(map[string]*Bullet),
 	}
 
 	for _, c := range bulletML.Contents {
@@ -63,6 +64,10 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 			if cts.Label != "" {
 				runner.fireDefTable[cts.Label] = &cts
 			}
+		case Bullet:
+			if cts.Label != "" {
+				runner.bulletDefTable[cts.Label] = &cts
+			}
 		}
 	}
 
@@ -75,6 +80,7 @@ type runner[T Position] struct {
 	actionProcesses []*actionProcess[T]
 	actionDefTable  map[string]*Action
 	fireDefTable    map[string]*Fire
+	bulletDefTable  map[string]*Bullet
 }
 
 func (r *runner[T]) Update() error {
@@ -196,10 +202,10 @@ func (a *actionProcessFrame[T]) update() error {
 			}
 		case Fire, FireRef:
 			var fire *Fire
-			var params []float64
+			var fireParams []float64
 			if f, ok := c.(Fire); ok {
 				fire = &f
-				params = a.params
+				fireParams = a.params
 			} else if r, ok := c.(FireRef); ok {
 				f, exists := a.actionProcess.runner.fireDefTable[r.Label]
 				if !exists {
@@ -211,35 +217,74 @@ func (a *actionProcessFrame[T]) update() error {
 					if err != nil {
 						return err
 					}
-					params = append(params, v)
+					fireParams = append(fireParams, v)
 				}
 
 				fire = f
 			}
 
-			switch bl := fire.BulletOrRef.(type) {
-			case Bullet:
-				sx, sy := a.actionProcess.runner.opts.CurrentShootPosition()
-				tx, ty := a.actionProcess.runner.opts.CurrentTargetPosition()
-
-				blt := a.actionProcess.runner.opts.OnBulletFired(&bl)
-				blt.SetX(sx)
-				blt.SetY(sy)
-
-				dir, err := calculateDirection(fire.Direction, sx, sy, tx, ty, bl.Direction, a.actionProcess.latestShoot, params)
-				if err != nil {
-					return err
+			var bullet *Bullet
+			var bulletParams []float64
+			if b, ok := fire.BulletOrRef.(Bullet); ok {
+				bullet = &b
+				bulletParams = fireParams
+			} else if r, ok := fire.BulletOrRef.(BulletRef); ok {
+				b, exists := a.actionProcess.runner.bulletDefTable[r.Label]
+				if !exists {
+					return fmt.Errorf("<bullet label=\"%s\"> not found", r.Label)
 				}
 
-				speed, err := calculateSpeed(fire.Speed, bl.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed, params)
-				if err != nil {
-					return err
+				for _, p := range r.Params {
+					v, err := evaluateExpr(p.Expr, fireParams)
+					if err != nil {
+						return err
+					}
+					bulletParams = append(bulletParams, v)
 				}
 
-				vx := T(speed * math.Cos(dir))
-				vy := T(speed * math.Sin(dir))
+				bullet = b
+			}
 
-				if len(bl.Contents) == 0 {
+			sx, sy := a.actionProcess.runner.opts.CurrentShootPosition()
+			tx, ty := a.actionProcess.runner.opts.CurrentTargetPosition()
+
+			blt := a.actionProcess.runner.opts.OnBulletFired(bullet)
+			blt.SetX(sx)
+			blt.SetY(sy)
+
+			dir, err := calculateDirection(fire.Direction, sx, sy, tx, ty, bullet.Direction, a.actionProcess.latestShoot, fireParams, bulletParams)
+			if err != nil {
+				return err
+			}
+
+			speed, err := calculateSpeed(fire.Speed, bullet.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed, fireParams, bulletParams)
+			if err != nil {
+				return err
+			}
+
+			vx := T(speed * math.Cos(dir))
+			vy := T(speed * math.Sin(dir))
+
+			if len(bullet.Contents) == 0 {
+				p := &actionProcess[T]{
+					bullet: &bulletModel[T]{
+						bulleter: blt,
+						x:        sx,
+						y:        sy,
+						vx:       vx,
+						vy:       vy,
+					},
+					runner: a.actionProcess.runner,
+				}
+				a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
+			} else {
+				for _, bc := range bullet.Contents {
+					var ba *Action
+					switch bcts := bc.(type) {
+					case Action:
+						ba = &bcts
+					}
+
 					p := &actionProcess[T]{
 						bullet: &bulletModel[T]{
 							bulleter: blt,
@@ -250,40 +295,20 @@ func (a *actionProcessFrame[T]) update() error {
 						},
 						runner: a.actionProcess.runner,
 					}
-					a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
-				} else {
-					for _, bc := range bl.Contents {
-						var ba *Action
-						switch bcts := bc.(type) {
-						case Action:
-							ba = &bcts
-						}
-
-						p := &actionProcess[T]{
-							bullet: &bulletModel[T]{
-								bulleter: blt,
-								x:        sx,
-								y:        sy,
-								vx:       vx,
-								vy:       vy,
-							},
-							runner: a.actionProcess.runner,
-						}
-						if ba != nil {
-							p.stack = append(p.stack, &actionProcessFrame[T]{
-								action:        ba,
-								actionProcess: p,
-								params:        params,
-							})
-						}
-						a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
+					if ba != nil {
+						p.stack = append(p.stack, &actionProcessFrame[T]{
+							action:        ba,
+							actionProcess: p,
+							params:        bulletParams,
+						})
 					}
+					a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
 				}
+			}
 
-				a.actionProcess.latestShoot = &shootInfo[T]{
-					vx: vx,
-					vy: vy,
-				}
+			a.actionProcess.latestShoot = &shootInfo[T]{
+				vx: vx,
+				vy: vy,
 			}
 		case ChangeSpeed:
 			if a.waitUntil == nil {
@@ -420,16 +445,16 @@ func (a *actionProcessFrame[T]) update() error {
 	return actionProcessFrameEnd
 }
 
-func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir *Direction, latestShoot *shootInfo[T], params []float64) (float64, error) {
+func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir *Direction, latestShoot *shootInfo[T], dirParams, baseDirParams []float64) (float64, error) {
 	if dir == nil {
 		if baseDir != nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil)
 		} else {
 			return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
 		}
 	}
 
-	val, err := evaluateExpr(dir.Expr, params)
+	val, err := evaluateExpr(dir.Expr, dirParams)
 	if err != nil {
 		return 0, err
 	}
@@ -442,7 +467,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 	case DirectionTypeAbsolute:
 		return val*math.Pi/180 - math.Pi/2, nil
 	case DirectionTypeRelative:
-		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
+		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil)
 		if err != nil {
 			return 0, err
 		}
@@ -450,7 +475,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 		return d, nil
 	case DirectionTypeSequence:
 		if latestShoot == nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil)
 		} else {
 			d := math.Atan2(float64(latestShoot.vy), float64(latestShoot.vx))
 			d += val * math.Pi / 180
@@ -461,10 +486,10 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 	}
 }
 
-func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *shootInfo[T], defaultSpeed float64, params []float64) (float64, error) {
+func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *shootInfo[T], defaultSpeed float64, params, baseParams []float64) (float64, error) {
 	if speed == nil {
 		if baseSpeed != nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, params)
+			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, baseParams, nil)
 		} else {
 			return defaultSpeed, nil
 		}
@@ -479,7 +504,7 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 	case SpeedTypeAbsolute:
 		return val, nil
 	case SpeedTypeRelative:
-		s, err := calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, params)
+		s, err := calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, baseParams, nil)
 		if err != nil {
 			return 0, err
 		}
@@ -487,7 +512,7 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 		return s, nil
 	case SpeedTypeSequence:
 		if latestShoot == nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, params)
+			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, baseParams, nil)
 		} else {
 			s := math.Sqrt(math.Pow(float64(latestShoot.vx), 2) + math.Pow(float64(latestShoot.vy), 2))
 			if err != nil {
