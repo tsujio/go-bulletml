@@ -129,11 +129,11 @@ func (a *actionProcess[T]) update() error {
 		if err := top.update(); err != nil {
 			if err == actionProcessFrameEnd {
 				a.stack = a.stack[:len(a.stack)-1]
+			} else if err == actionProcessFrameWait {
+				break
 			} else {
 				return err
 			}
-		} else {
-			break
 		}
 	}
 
@@ -169,7 +169,10 @@ type actionProcessFrame[T Position] struct {
 	actionProcess *actionProcess[T]
 }
 
-var actionProcessFrameEnd = errors.New("actionProcessFrameEnd")
+var (
+	actionProcessFrameWait = errors.New("actionProcessFrameWait")
+	actionProcessFrameEnd  = errors.New("actionProcessFrameEnd")
+)
 
 func (a *actionProcessFrame[T]) update() error {
 	for a.actionIndex < len(a.action.Contents) {
@@ -341,7 +344,7 @@ func (a *actionProcessFrame[T]) update() error {
 				dvy := a.changeDelta * math.Sin(dir)
 				a.actionProcess.bullet.vx += T(dvx)
 				a.actionProcess.bullet.vy += T(dvy)
-				return nil
+				return actionProcessFrameWait
 			} else {
 				a.waitUntil = nil
 				a.changeDelta = 0
@@ -389,7 +392,7 @@ func (a *actionProcessFrame[T]) update() error {
 				speed := math.Sqrt(math.Pow(float64(a.actionProcess.bullet.vx), 2) + math.Pow(float64(a.actionProcess.bullet.vy), 2))
 				a.actionProcess.bullet.vx = T(speed * math.Cos(dir))
 				a.actionProcess.bullet.vy = T(speed * math.Sin(dir))
-				return nil
+				return actionProcessFrameWait
 			} else {
 				a.waitUntil = nil
 				a.changeDelta = 0
@@ -403,9 +406,10 @@ func (a *actionProcessFrame[T]) update() error {
 
 				w := a.actionProcess.ticks + uint64(wait)
 				a.waitUntil = &w
-				return nil
-			} else if *a.waitUntil > a.actionProcess.ticks {
-				return nil
+			}
+
+			if *a.waitUntil > a.actionProcess.ticks {
+				return actionProcessFrameWait
 			} else {
 				a.waitUntil = nil
 			}
