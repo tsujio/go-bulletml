@@ -1,49 +1,14 @@
 <?xml version="1.0" ?>
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
-    <action>
-        <repeat>
-            <times>5</times>
-            <action>
-                <fire>
-                    <direction type="sequence">5</direction>
-                    <bullet>
-                        <action>
-                            <wait>60</wait>
-                            <changeSpeed>
-                                <term>60</term>
-                                <speed type="relative">2</speed>
-                            </changeSpeed>
-                            <changeDirection>
-                                <term>30</term>
-                                <direction type="aim">0</direction>
-                            </changeDirection>
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>60</wait>
-            </action>
-        </repeat>
-    </action>
-    <action>
-        <repeat>
-            <times>5</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet />
-                </fire>
-                <wait>60</wait>
-            </action>
-        </repeat>
-    </action>
-    <action>
+    <action label="base">
         <repeat>
             <times>999</times>
             <action>
                 <fire>
                     <direction type="sequence">-5</direction>
                     <bullet>
+                        <direction type="absolute">$1</direction>
                         <action>
                             <wait>600</wait>
                             <vanish />
@@ -55,129 +20,43 @@
         </repeat>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">0</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>0</param>
+        </actionRef>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">180</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>45</param>
+        </actionRef>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">270</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>90</param>
+        </actionRef>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">45</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>135</param>
+        </actionRef>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">135</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>180</param>
+        </actionRef>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">225</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>225</param>
+        </actionRef>
     </action>
     <action>
-        <repeat>
-            <times>999</times>
-            <action>
-                <fire>
-                    <direction type="sequence">-5</direction>
-                    <bullet>
-                        <direction type="absolute">315</direction>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
-                </fire>
-                <wait>2</wait>
-            </action>
-        </repeat>
+        <actionRef label="base">
+            <param>270</param>
+        </actionRef>
+    </action>
+    <action>
+        <actionRef label="base">
+            <param>315</param>
+        </actionRef>
     </action>
 </bulletml>

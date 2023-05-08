@@ -2,7 +2,9 @@ package bulletml
 
 import (
 	"errors"
+	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 
 	"golang.org/x/exp/constraints"
@@ -36,21 +38,26 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 	}
 
 	runner := &runner[T]{
-		bulletML: bulletML,
-		opts:     &_opts,
+		bulletML:       bulletML,
+		opts:           &_opts,
+		actionDefTable: make(map[string]*Action),
 	}
 
 	for _, c := range bulletML.Contents {
 		switch cts := c.(type) {
 		case Action:
-			p := &actionProcess[T]{
-				runner: runner,
+			if cts.Label == "" {
+				p := &actionProcess[T]{
+					runner: runner,
+				}
+				p.stack = append(p.stack, &actionProcessFrame[T]{
+					action:        &cts,
+					actionProcess: p,
+				})
+				runner.actionProcesses = append(runner.actionProcesses, p)
+			} else {
+				runner.actionDefTable[cts.Label] = &cts
 			}
-			p.stack = append(p.stack, &actionProcessFrame[T]{
-				action:        &cts,
-				actionProcess: p,
-			})
-			runner.actionProcesses = append(runner.actionProcesses, p)
 		}
 	}
 
@@ -61,6 +68,7 @@ type runner[T Position] struct {
 	bulletML        *BulletML
 	opts            *NewRunnerOptions[T]
 	actionProcesses []*actionProcess[T]
+	actionDefTable  map[string]*Action
 }
 
 func (r *runner[T]) Update() error {
@@ -145,6 +153,7 @@ type actionProcessFrame[T Position] struct {
 	repeatIndex   int
 	waitUntil     *uint64
 	changeDelta   float64
+	params        []float64
 	actionProcess *actionProcess[T]
 }
 
@@ -153,6 +162,32 @@ var actionProcessFrameEnd = errors.New("actionProcessFrameEnd")
 func (a *actionProcessFrame[T]) update() error {
 	for a.actionIndex < len(a.action.Contents) {
 		switch c := a.action.Contents[a.actionIndex].(type) {
+		case Repeat:
+			repeat, err := evaluateExpr(c.Times.Expr, a.params)
+			if err != nil {
+				return err
+			}
+
+			var action *Action
+			switch ac := c.ActionOrRef.(type) {
+			case Action:
+				action = &ac
+			}
+
+			if a.repeatIndex < int(repeat) {
+				f := &actionProcessFrame[T]{
+					action:        action,
+					actionProcess: a.actionProcess,
+					params:        a.params,
+				}
+				a.actionProcess.stack = append(a.actionProcess.stack, f)
+
+				a.repeatIndex++
+
+				return nil
+			} else {
+				a.repeatIndex = 0
+			}
 		case Fire:
 			switch bl := c.BulletOrRef.(type) {
 			case Bullet:
@@ -163,12 +198,12 @@ func (a *actionProcessFrame[T]) update() error {
 				blt.SetX(sx)
 				blt.SetY(sy)
 
-				dir, err := calculateDirection(c.Direction, sx, sy, tx, ty, bl.Direction, a.actionProcess.latestShoot)
+				dir, err := calculateDirection(c.Direction, sx, sy, tx, ty, bl.Direction, a.actionProcess.latestShoot, a.params)
 				if err != nil {
 					return err
 				}
 
-				speed, err := calculateSpeed(c.Speed, bl.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed)
+				speed, err := calculateSpeed(c.Speed, bl.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed, a.params)
 				if err != nil {
 					return err
 				}
@@ -210,6 +245,7 @@ func (a *actionProcessFrame[T]) update() error {
 							p.stack = append(p.stack, &actionProcessFrame[T]{
 								action:        ba,
 								actionProcess: p,
+								params:        a.params,
 							})
 						}
 						a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
@@ -223,12 +259,12 @@ func (a *actionProcessFrame[T]) update() error {
 			}
 		case ChangeSpeed:
 			if a.waitUntil == nil {
-				term, err := evaluateExpr(c.Term.Expr)
+				term, err := evaluateExpr(c.Term.Expr, a.params)
 				if err != nil {
 					return err
 				}
 
-				speed, err := evaluateExpr(c.Speed.Expr)
+				speed, err := evaluateExpr(c.Speed.Expr, a.params)
 				if err != nil {
 					return err
 				}
@@ -259,12 +295,12 @@ func (a *actionProcessFrame[T]) update() error {
 			}
 		case ChangeDirection:
 			if a.waitUntil == nil {
-				term, err := evaluateExpr(c.Term.Expr)
+				term, err := evaluateExpr(c.Term.Expr, a.params)
 				if err != nil {
 					return err
 				}
 
-				dir, err := evaluateExpr(c.Direction.Expr)
+				dir, err := evaluateExpr(c.Direction.Expr, a.params)
 				if err != nil {
 					return err
 				}
@@ -299,7 +335,7 @@ func (a *actionProcessFrame[T]) update() error {
 			}
 		case Wait:
 			if a.waitUntil == nil {
-				wait, err := evaluateExpr(c.Expr)
+				wait, err := evaluateExpr(c.Expr, a.params)
 				if err != nil {
 					return err
 				}
@@ -315,31 +351,31 @@ func (a *actionProcessFrame[T]) update() error {
 		case Vanish:
 			a.actionProcess.runner.opts.OnBulletVanished(a.actionProcess.bullet.bulleter)
 			a.actionProcess.bullet.vanished = true
-		case Repeat:
-			repeat, err := evaluateExpr(c.Times.Expr)
-			if err != nil {
-				return err
+		case ActionRef:
+			action, exists := a.actionProcess.runner.actionDefTable[c.Label]
+			if !exists {
+				return fmt.Errorf("<action label=\"%s\"> not found", c.Label)
 			}
 
-			var action *Action
-			switch ac := c.ActionOrRef.(type) {
-			case Action:
-				action = &ac
-			}
-
-			if a.repeatIndex < int(repeat) {
-				f := &actionProcessFrame[T]{
-					action:        action,
-					actionProcess: a.actionProcess,
+			var params []float64
+			for _, p := range c.Params {
+				v, err := evaluateExpr(p.Expr, a.params)
+				if err != nil {
+					return err
 				}
-				a.actionProcess.stack = append(a.actionProcess.stack, f)
-
-				a.repeatIndex++
-
-				return nil
-			} else {
-				a.repeatIndex = 0
+				params = append(params, v)
 			}
+
+			f := &actionProcessFrame[T]{
+				action:        action,
+				actionProcess: a.actionProcess,
+				params:        params,
+			}
+			a.actionProcess.stack = append(a.actionProcess.stack, f)
+
+			a.actionIndex++
+
+			return nil
 		}
 
 		a.actionIndex++
@@ -348,16 +384,16 @@ func (a *actionProcessFrame[T]) update() error {
 	return actionProcessFrameEnd
 }
 
-func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir *Direction, latestShoot *shootInfo[T]) (float64, error) {
+func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir *Direction, latestShoot *shootInfo[T], params []float64) (float64, error) {
 	if dir == nil {
 		if baseDir != nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
 		} else {
 			return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
 		}
 	}
 
-	val, err := evaluateExpr(dir.Expr)
+	val, err := evaluateExpr(dir.Expr, params)
 	if err != nil {
 		return 0, err
 	}
@@ -370,7 +406,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 	case DirectionTypeAbsolute:
 		return val * math.Pi / 180, nil
 	case DirectionTypeRelative:
-		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot)
+		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
 		if err != nil {
 			return 0, err
 		}
@@ -378,7 +414,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 		return d, nil
 	case DirectionTypeSequence:
 		if latestShoot == nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, params)
 		} else {
 			d := math.Atan2(float64(latestShoot.vy), float64(latestShoot.vx))
 			d += val * math.Pi / 180
@@ -389,16 +425,16 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 	}
 }
 
-func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *shootInfo[T], defaultSpeed float64) (float64, error) {
+func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *shootInfo[T], defaultSpeed float64, params []float64) (float64, error) {
 	if speed == nil {
 		if baseSpeed != nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed)
+			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, params)
 		} else {
 			return defaultSpeed, nil
 		}
 	}
 
-	val, err := evaluateExpr(speed.Expr)
+	val, err := evaluateExpr(speed.Expr, params)
 	if err != nil {
 		return 0, err
 	}
@@ -407,7 +443,7 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 	case SpeedTypeAbsolute:
 		return val, nil
 	case SpeedTypeRelative:
-		s, err := calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed)
+		s, err := calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, params)
 		if err != nil {
 			return 0, err
 		}
@@ -415,7 +451,7 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 		return s, nil
 	case SpeedTypeSequence:
 		if latestShoot == nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed)
+			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, params)
 		} else {
 			s := math.Sqrt(math.Pow(float64(latestShoot.vx), 2) + math.Pow(float64(latestShoot.vy), 2))
 			if err != nil {
@@ -429,6 +465,20 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 	}
 }
 
-func evaluateExpr(expr string) (float64, error) {
+var variableRegexp = regexp.MustCompile(`\$\d+`)
+
+func evaluateExpr(expr string, params []float64) (float64, error) {
+	expr = variableRegexp.ReplaceAllStringFunc(expr, func(m string) string {
+		i, err := strconv.ParseInt(m[1:], 10, 32)
+		if err != nil {
+			return ""
+		}
+		i -= 1
+		if int(i) >= len(params) {
+			return ""
+		}
+		return fmt.Sprintf("%f", params[i])
+	})
+
 	return strconv.ParseFloat(expr, 64)
 }
