@@ -3,6 +3,8 @@ package bulletml
 import (
 	"errors"
 	"fmt"
+	"go/token"
+	"go/types"
 	"math"
 	"regexp"
 	"strconv"
@@ -49,14 +51,7 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 		switch cts := c.(type) {
 		case Action:
 			if cts.Label == "" {
-				p := &actionProcess[T]{
-					runner: runner,
-				}
-				p.stack = append(p.stack, &actionProcessFrame[T]{
-					action:        &cts,
-					actionProcess: p,
-				})
-				runner.actionProcesses = append(runner.actionProcesses, p)
+				runner.createActionProcess(&cts, nil, nil)
 			} else {
 				runner.actionDefTable[cts.Label] = &cts
 			}
@@ -81,6 +76,23 @@ type runner[T Position] struct {
 	actionDefTable  map[string]*Action
 	fireDefTable    map[string]*Fire
 	bulletDefTable  map[string]*Bullet
+}
+
+func (r *runner[T]) createActionProcess(action *Action, params []float64, bullet *bulletModel[T]) {
+	p := &actionProcess[T]{
+		bullet: bullet,
+		runner: r,
+	}
+
+	if action != nil {
+		p.stack = append(p.stack, &actionProcessFrame[T]{
+			action:        action,
+			actionProcess: p,
+			params:        params,
+		})
+	}
+
+	r.actionProcesses = append(r.actionProcesses, p)
 }
 
 func (r *runner[T]) Update() error {
@@ -183,17 +195,16 @@ func (a *actionProcessFrame[T]) update() error {
 				return err
 			}
 
-			var action *Action
-			switch ac := c.ActionOrRef.(type) {
-			case Action:
-				action = &ac
+			action, params, err := lookUpDefTable[Action, ActionRef](c.ActionOrRef, a.actionProcess.runner.actionDefTable, a.params)
+			if err != nil {
+				return err
 			}
 
 			if a.repeatIndex < int(repeat) {
 				f := &actionProcessFrame[T]{
 					action:        action,
 					actionProcess: a.actionProcess,
-					params:        a.params,
+					params:        params,
 				}
 				a.actionProcess.stack = append(a.actionProcess.stack, f)
 
@@ -204,48 +215,14 @@ func (a *actionProcessFrame[T]) update() error {
 				a.repeatIndex = 0
 			}
 		case Fire, FireRef:
-			var fire *Fire
-			var fireParams []float64
-			if f, ok := c.(Fire); ok {
-				fire = &f
-				fireParams = a.params
-			} else if r, ok := c.(FireRef); ok {
-				f, exists := a.actionProcess.runner.fireDefTable[r.Label]
-				if !exists {
-					return fmt.Errorf("<fire label=\"%s\"> not found", r.Label)
-				}
-
-				for _, p := range r.Params {
-					v, err := evaluateExpr(p.Expr, a.params)
-					if err != nil {
-						return err
-					}
-					fireParams = append(fireParams, v)
-				}
-
-				fire = f
+			fire, fireParams, err := lookUpDefTable[Fire, FireRef](c, a.actionProcess.runner.fireDefTable, a.params)
+			if err != nil {
+				return err
 			}
 
-			var bullet *Bullet
-			var bulletParams []float64
-			if b, ok := fire.BulletOrRef.(Bullet); ok {
-				bullet = &b
-				bulletParams = fireParams
-			} else if r, ok := fire.BulletOrRef.(BulletRef); ok {
-				b, exists := a.actionProcess.runner.bulletDefTable[r.Label]
-				if !exists {
-					return fmt.Errorf("<bullet label=\"%s\"> not found", r.Label)
-				}
-
-				for _, p := range r.Params {
-					v, err := evaluateExpr(p.Expr, fireParams)
-					if err != nil {
-						return err
-					}
-					bulletParams = append(bulletParams, v)
-				}
-
-				bullet = b
+			bullet, bulletParams, err := lookUpDefTable[Bullet, BulletRef](fire.BulletOrRef, a.actionProcess.runner.bulletDefTable, fireParams)
+			if err != nil {
+				return err
 			}
 
 			sx, sy := a.actionProcess.runner.opts.CurrentShootPosition()
@@ -269,17 +246,13 @@ func (a *actionProcessFrame[T]) update() error {
 			vy := T(speed * math.Sin(dir))
 
 			if len(bullet.Contents) == 0 {
-				p := &actionProcess[T]{
-					bullet: &bulletModel[T]{
-						bulleter: blt,
-						x:        sx,
-						y:        sy,
-						vx:       vx,
-						vy:       vy,
-					},
-					runner: a.actionProcess.runner,
-				}
-				a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
+				a.actionProcess.runner.createActionProcess(nil, nil, &bulletModel[T]{
+					bulleter: blt,
+					x:        sx,
+					y:        sy,
+					vx:       vx,
+					vy:       vy,
+				})
 			} else {
 				for _, bc := range bullet.Contents {
 					var ba *Action
@@ -288,24 +261,13 @@ func (a *actionProcessFrame[T]) update() error {
 						ba = &bcts
 					}
 
-					p := &actionProcess[T]{
-						bullet: &bulletModel[T]{
-							bulleter: blt,
-							x:        sx,
-							y:        sy,
-							vx:       vx,
-							vy:       vy,
-						},
-						runner: a.actionProcess.runner,
-					}
-					if ba != nil {
-						p.stack = append(p.stack, &actionProcessFrame[T]{
-							action:        ba,
-							actionProcess: p,
-							params:        bulletParams,
-						})
-					}
-					a.actionProcess.runner.actionProcesses = append(a.actionProcess.runner.actionProcesses, p)
+					a.actionProcess.runner.createActionProcess(ba, bulletParams, &bulletModel[T]{
+						bulleter: blt,
+						x:        sx,
+						y:        sy,
+						vx:       vx,
+						vy:       vy,
+					})
 				}
 			}
 
@@ -417,18 +379,9 @@ func (a *actionProcessFrame[T]) update() error {
 			a.actionProcess.runner.opts.OnBulletVanished(a.actionProcess.bullet.bulleter)
 			a.actionProcess.bullet.vanished = true
 		case ActionRef:
-			action, exists := a.actionProcess.runner.actionDefTable[c.Label]
-			if !exists {
-				return fmt.Errorf("<action label=\"%s\"> not found", c.Label)
-			}
-
-			var params []float64
-			for _, p := range c.Params {
-				v, err := evaluateExpr(p.Expr, a.params)
-				if err != nil {
-					return err
-				}
-				params = append(params, v)
+			action, params, err := lookUpDefTable[Action, ActionRef](c, a.actionProcess.runner.actionDefTable, a.params)
+			if err != nil {
+				return err
 			}
 
 			f := &actionProcessFrame[T]{
@@ -447,6 +400,30 @@ func (a *actionProcessFrame[T]) update() error {
 	}
 
 	return actionProcessFrameEnd
+}
+
+func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params []float64) (*T, []float64, error) {
+	if t, ok := typeOrRef.(T); ok {
+		return &t, params, nil
+	} else if r, ok := typeOrRef.(R); ok {
+		t, exists := table[r.label()]
+		if !exists {
+			return nil, nil, fmt.Errorf("<%s label=\"%s\"> not found", r.xmlName(), r.label())
+		}
+
+		var refParams []float64
+		for _, p := range r.params() {
+			v, err := evaluateExpr(p.Expr, params)
+			if err != nil {
+				return nil, nil, err
+			}
+			refParams = append(refParams, v)
+		}
+
+		return t, refParams, nil
+	} else {
+		return nil, nil, fmt.Errorf("Invalid type: %T", typeOrRef)
+	}
 }
 
 func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir *Direction, latestShoot *shootInfo[T], dirParams, baseDirParams []float64) (float64, error) {
@@ -545,5 +522,10 @@ func evaluateExpr(expr string, params []float64) (float64, error) {
 		return fmt.Sprintf("%f", params[i])
 	})
 
-	return strconv.ParseFloat(expr, 64)
+	tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
+	if err != nil {
+		return 0, err
+	}
+
+	return strconv.ParseFloat(tv.Value.ExactString(), 64)
 }

@@ -641,6 +641,18 @@ type BulletRef struct {
 	Params  []Param
 }
 
+func (b BulletRef) xmlName() string {
+	return b.XMLName.Local
+}
+
+func (b BulletRef) label() string {
+	return b.Label
+}
+
+func (b BulletRef) params() []Param {
+	return b.Params
+}
+
 func (b *BulletRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	b.XMLName = start.Name
 
@@ -679,6 +691,18 @@ type ActionRef struct {
 	XMLName xml.Name `xml:"actionRef"`
 	Label   string   `xml:"label,attr"`
 	Params  []Param
+}
+
+func (a ActionRef) xmlName() string {
+	return a.XMLName.Local
+}
+
+func (a ActionRef) label() string {
+	return a.Label
+}
+
+func (a ActionRef) params() []Param {
+	return a.Params
 }
 
 func (a *ActionRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
@@ -721,6 +745,18 @@ type FireRef struct {
 	Params  []Param
 }
 
+func (f FireRef) xmlName() string {
+	return f.XMLName.Local
+}
+
+func (f FireRef) label() string {
+	return f.Label
+}
+
+func (f FireRef) params() []Param {
+	return f.Params
+}
+
 func (f *FireRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	f.XMLName = start.Name
 
@@ -758,4 +794,10 @@ func (f *FireRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 type Param struct {
 	XMLName xml.Name `xml:"param"`
 	Expr    string   `xml:",innerxml"`
+}
+
+type refType interface {
+	xmlName() string
+	label() string
+	params() []Param
 }

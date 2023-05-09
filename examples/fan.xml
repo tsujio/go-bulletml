@@ -1,0 +1,64 @@
+<?xml version="1.0" ?>
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <action label="main">
+        <fire>
+            <direction type="sequence">$1 * 3</direction>
+            <bullet>
+                <direction type="absolute">$2</direction>
+            </bullet>
+        </fire>
+        <wait>5</wait>
+    </action>
+    <action label="wave">
+        <repeat>
+            <times>999</times>
+            <action>
+                <repeat>
+                    <times>30</times>
+                    <actionRef label="main">
+                        <param>1</param>
+                        <param>$1</param>
+                    </actionRef>
+                </repeat>
+                <repeat>
+                    <times>30</times>
+                    <actionRef label="main">
+                        <param>-1</param>
+                        <param>$1</param>
+                    </actionRef>
+                </repeat>
+            </action>
+        </repeat>
+    </action>
+    <action>
+        <actionRef label="wave">
+            <param>105</param>
+        </actionRef>
+    </action>
+    <action>
+        <actionRef label="wave">
+            <param>115</param>
+        </actionRef>
+    </action>
+    <action>
+        <actionRef label="wave">
+            <param>125</param>
+        </actionRef>
+    </action>
+    <action>
+        <actionRef label="wave">
+            <param>135</param>
+        </actionRef>
+    </action>
+    <action>
+        <actionRef label="wave">
+            <param>145</param>
+        </actionRef>
+    </action>
+    <action>
+        <actionRef label="wave">
+            <param>155</param>
+        </actionRef>
+    </action>
+</bulletml>
