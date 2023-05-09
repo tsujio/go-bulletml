@@ -6,6 +6,10 @@
             <direction type="sequence">$1 * 3</direction>
             <bullet>
                 <direction type="absolute">$2</direction>
+                <action>
+                    <wait>600</wait>
+                    <vanish />
+                </action>
             </bullet>
         </fire>
         <wait>5</wait>

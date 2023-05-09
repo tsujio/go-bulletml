@@ -1,0 +1,42 @@
+<?xml version="1.0" ?>
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <action label="main">
+        <repeat>
+            <times>2</times>
+            <action>
+                <changeDirection>
+                    <term>3.14 * $1 / 4</term>
+                    <direction type="relative">-90</direction>
+                </changeDirection>
+            </action>
+        </repeat>
+        <repeat>
+            <times>999</times>
+            <action>
+                <changeDirection>
+                    <term>3.14 * $1 / 2</term>
+                    <direction type="relative">-90</direction>
+                </changeDirection>
+            </action>
+        </repeat>
+        <vanish />
+    </action>
+    <action>
+        <repeat>
+            <times>999</times>
+            <action>
+                <fire>
+                    <direction type="absolute">180</direction>
+                    <speed type="absolute">3</speed>
+                    <bullet>
+                        <actionRef label="main">
+                            <param>10 + $rand * 120</param>
+                        </actionRef>
+                    </bullet>
+                </fire>
+                <wait>10</wait>
+            </action>
+        </repeat>
+    </action>
+</bulletml>
