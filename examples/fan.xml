@@ -35,32 +35,32 @@
             </action>
         </repeat>
     </action>
-    <action>
+    <action label="top-1">
         <actionRef label="wave">
             <param>105</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-2">
         <actionRef label="wave">
             <param>115</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-3">
         <actionRef label="wave">
             <param>125</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-4">
         <actionRef label="wave">
             <param>135</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-5">
         <actionRef label="wave">
             <param>145</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-6">
         <actionRef label="wave">
             <param>155</param>
         </actionRef>

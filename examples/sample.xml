@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
-    <action>
+    <action label="top-1">
         <repeat>
             <times>5</times>
             <action>
@@ -25,7 +25,7 @@
             </action>
         </repeat>
     </action>
-    <action>
+    <action label="top-2">
         <repeat>
             <times>5</times>
             <action>

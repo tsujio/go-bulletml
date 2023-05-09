@@ -22,7 +22,7 @@
         </repeat>
         <vanish />
     </action>
-    <action>
+    <action label="top">
         <repeat>
             <times>999</times>
             <action>

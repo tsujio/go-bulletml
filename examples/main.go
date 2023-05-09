@@ -69,10 +69,6 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
-	if err := g.runner.Update(); err != nil {
-		panic(err)
-	}
-
 	for _, k := range inpututil.AppendJustPressedKeys(nil) {
 		if k == ebiten.KeyArrowUp || k == ebiten.KeyArrowDown {
 			if k == ebiten.KeyArrowUp {
@@ -89,9 +85,19 @@ func (g *Game) Update() error {
 	g.playerX = float64(x)
 	g.playerY = float64(y)
 
+	if err := g.runner.Update(); err != nil {
+		panic(err)
+	}
+
 	newBullets := make([]*bullet, 0, len(g.bullets))
 	for _, b := range g.bullets {
-		if !b.vanished {
+		if err := b.runner.Update(); err != nil {
+			panic(err)
+		}
+
+		b.x, b.y = b.runner.Position()
+
+		if !b.runner.Vanished() {
 			newBullets = append(newBullets, b)
 		}
 	}
@@ -131,13 +137,14 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func (g *Game) initializeRunner() {
 	opts := &bulletml.NewRunnerOptions{
-		OnBulletFired: func(_ *bulletml.Bullet) bulletml.Bulleter {
-			b := &bullet{}
+		OnBulletFired: func(bulletRunner bulletml.BulletRunner) {
+			x, y := bulletRunner.Position()
+			b := &bullet{
+				x:      x,
+				y:      y,
+				runner: bulletRunner,
+			}
 			g.bullets = append(g.bullets, b)
-			return b
-		},
-		OnBulletVanished: func(b bulletml.Bulleter) {
-			b.(*bullet).vanished = true
 		},
 		CurrentShootPosition: func() (float64, float64) {
 			return g.enemyX, g.enemyY
@@ -156,16 +163,8 @@ func (g *Game) initializeRunner() {
 }
 
 type bullet struct {
-	vanished bool
-	x, y     float64
-}
-
-func (b *bullet) SetX(x float64) {
-	b.x = x
-}
-
-func (b *bullet) SetY(y float64) {
-	b.y = y
+	x, y   float64
+	runner bulletml.BulletRunner
 }
 
 func main() {

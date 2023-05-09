@@ -19,42 +19,42 @@
             </action>
         </repeat>
     </action>
-    <action>
+    <action label="top-1">
         <actionRef label="base">
             <param>0</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-2">
         <actionRef label="base">
             <param>45</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-3">
         <actionRef label="base">
             <param>90</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-4">
         <actionRef label="base">
             <param>135</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-5">
         <actionRef label="base">
             <param>180</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-6">
         <actionRef label="base">
             <param>225</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-7">
         <actionRef label="base">
             <param>270</param>
         </actionRef>
     </action>
-    <action>
+    <action label="top-8">
         <actionRef label="base">
             <param>315</param>
         </actionRef>
