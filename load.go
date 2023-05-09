@@ -2,6 +2,7 @@ package bulletml
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -484,6 +485,7 @@ type Direction struct {
 func (dir *Direction) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	dir.XMLName = start.Name
 
+	dir.Type = DirectionTypeAim
 	for _, attr := range start.Attr {
 		if attr.Name.Local == "type" {
 			switch attr.Value {
@@ -525,6 +527,7 @@ type Speed struct {
 func (s *Speed) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	s.XMLName = start.Name
 
+	s.Type = SpeedTypeAbsolute
 	for _, attr := range start.Attr {
 		if attr.Name.Local == "type" {
 			switch attr.Value {
@@ -564,6 +567,7 @@ type Horizontal struct {
 func (h *Horizontal) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	h.XMLName = start.Name
 
+	h.Type = HorizontalTypeAbsolute
 	for _, attr := range start.Attr {
 		if attr.Name.Local == "type" {
 			switch attr.Value {
@@ -603,6 +607,7 @@ type Vertical struct {
 func (v *Vertical) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	v.XMLName = start.Name
 
+	v.Type = VerticalTypeAbsolute
 	for _, attr := range start.Attr {
 		if attr.Name.Local == "type" {
 			switch attr.Value {
@@ -661,6 +666,9 @@ func (b *BulletRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			b.Label = attr.Value
 		}
 	}
+	if b.Label == "" {
+		return errors.New("<bulletRef> element requires 'label' attribute")
+	}
 
 	for {
 		token, err := d.Token()
@@ -713,6 +721,9 @@ func (a *ActionRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			a.Label = attr.Value
 		}
 	}
+	if a.Label == "" {
+		return errors.New("<actionRef> element requires 'label' attribute")
+	}
 
 	for {
 		token, err := d.Token()
@@ -764,6 +775,9 @@ func (f *FireRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		if attr.Name.Local == "label" {
 			f.Label = attr.Value
 		}
+	}
+	if f.Label == "" {
+		return errors.New("<fireRef> element requires 'label' attribute")
 	}
 
 	for {

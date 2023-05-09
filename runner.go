@@ -11,33 +11,28 @@ import (
 	"regexp"
 	"strconv"
 	"time"
-
-	"golang.org/x/exp/constraints"
 )
 
 type Runner interface {
 	Update() error
 }
 
-type Position interface {
-	constraints.Float | constraints.Integer
+type Bulleter interface {
+	SetX(x float64)
+	SetY(y float64)
 }
 
-type Bulleter[T Position] interface {
-	SetX(x T)
-	SetY(y T)
-}
-
-type NewRunnerOptions[T Position] struct {
-	OnBulletFired         func(*Bullet) Bulleter[T]
-	OnBulletVanished      func(Bulleter[T])
-	CurrentShootPosition  func() (T, T)
-	CurrentTargetPosition func() (T, T)
+type NewRunnerOptions struct {
+	OnBulletFired         func(*Bullet) Bulleter
+	OnBulletVanished      func(Bulleter)
+	CurrentShootPosition  func() (float64, float64)
+	CurrentTargetPosition func() (float64, float64)
 	DefaultBulletSpeed    float64
 	Random                *rand.Rand
+	Rank                  float64
 }
 
-func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runner, error) {
+func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 	_opts := *opts
 	if _opts.DefaultBulletSpeed == 0 {
 		_opts.DefaultBulletSpeed = 1.0
@@ -46,7 +41,7 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 		_opts.Random = rand.New(rand.NewSource(time.Now().Unix()))
 	}
 
-	runner := &runner[T]{
+	runner := &runner{
 		bulletML:       bulletML,
 		opts:           &_opts,
 		actionDefTable: make(map[string]*Action),
@@ -76,34 +71,30 @@ func NewRunner[T Position](bulletML *BulletML, opts *NewRunnerOptions[T]) (Runne
 	return runner, nil
 }
 
-type runner[T Position] struct {
+type runner struct {
 	bulletML        *BulletML
-	opts            *NewRunnerOptions[T]
-	actionProcesses []*actionProcess[T]
+	opts            *NewRunnerOptions
+	actionProcesses []*actionProcess
 	actionDefTable  map[string]*Action
 	fireDefTable    map[string]*Fire
 	bulletDefTable  map[string]*Bullet
 }
 
-func (r *runner[T]) createActionProcess(action *Action, params []float64, bullet *bulletModel[T]) {
-	p := &actionProcess[T]{
+func (r *runner) createActionProcess(action *Action, params []float64, bullet *bulletModel) {
+	p := &actionProcess{
 		bullet: bullet,
 		runner: r,
 	}
 
 	if action != nil {
-		p.stack = append(p.stack, &actionProcessFrame[T]{
-			action:        action,
-			actionProcess: p,
-			params:        params,
-		})
+		p.pushStack(action, params)
 	}
 
 	r.actionProcesses = append(r.actionProcesses, p)
 }
 
-func (r *runner[T]) Update() error {
-	newActionProcesses := make([]*actionProcess[T], 0, len(r.actionProcesses))
+func (r *runner) Update() error {
+	newActionProcesses := make([]*actionProcess, 0, len(r.actionProcesses))
 
 	n := len(r.actionProcesses)
 	for i := 0; i < n; i++ {
@@ -126,21 +117,21 @@ func (r *runner[T]) Update() error {
 	return nil
 }
 
-type shootInfo[T Position] struct {
-	vx, vy T
+type shootInfo struct {
+	vx, vy float64
 }
 
-type actionProcess[T Position] struct {
+type actionProcess struct {
 	ticks       uint64
-	stack       []*actionProcessFrame[T]
-	bullet      *bulletModel[T]
-	latestShoot *shootInfo[T]
-	runner      *runner[T]
+	stack       []*actionProcessFrame
+	bullet      *bulletModel
+	latestShoot *shootInfo
+	runner      *runner
 }
 
 var actionProcessEnd = errors.New("actionProcessEnd")
 
-func (a *actionProcess[T]) update() error {
+func (a *actionProcess) update() error {
 	a.ticks++
 
 	for len(a.stack) > 0 {
@@ -171,21 +162,31 @@ func (a *actionProcess[T]) update() error {
 	return nil
 }
 
-type bulletModel[T Position] struct {
-	bulleter Bulleter[T]
-	x, y     T
-	vx, vy   T
+func (a *actionProcess) pushStack(action *Action, params []float64) {
+	f := &actionProcessFrame{
+		action:        action,
+		actionProcess: a,
+		params:        params,
+	}
+
+	a.stack = append(a.stack, f)
+}
+
+type bulletModel struct {
+	bulleter Bulleter
+	x, y     float64
+	vx, vy   float64
 	vanished bool
 }
 
-type actionProcessFrame[T Position] struct {
+type actionProcessFrame struct {
 	action        *Action
 	actionIndex   int
 	repeatIndex   int
 	waitUntil     *uint64
 	changeDelta   float64
 	params        []float64
-	actionProcess *actionProcess[T]
+	actionProcess *actionProcess
 }
 
 var (
@@ -193,27 +194,22 @@ var (
 	actionProcessFrameEnd  = errors.New("actionProcessFrameEnd")
 )
 
-func (a *actionProcessFrame[T]) update() error {
+func (a *actionProcessFrame) update() error {
 	for a.actionIndex < len(a.action.Contents) {
 		switch c := a.action.Contents[a.actionIndex].(type) {
 		case Repeat:
-			repeat, err := evaluateExpr(c.Times.Expr, a.params, a.actionProcess.runner.opts.Random)
+			repeat, err := evaluateExpr(c.Times.Expr, a.params, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			action, params, err := lookUpDefTable[Action, ActionRef](c.ActionOrRef, a.actionProcess.runner.actionDefTable, a.params, a.actionProcess.runner.opts.Random)
+			action, params, err := lookUpDefTable[Action, ActionRef](c.ActionOrRef, a.actionProcess.runner.actionDefTable, a.params, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
 			if a.repeatIndex < int(repeat) {
-				f := &actionProcessFrame[T]{
-					action:        action,
-					actionProcess: a.actionProcess,
-					params:        params,
-				}
-				a.actionProcess.stack = append(a.actionProcess.stack, f)
+				a.actionProcess.pushStack(action, params)
 
 				a.repeatIndex++
 
@@ -222,13 +218,13 @@ func (a *actionProcessFrame[T]) update() error {
 				a.repeatIndex = 0
 			}
 		case Fire, FireRef:
-			fire, params, err := lookUpDefTable[Fire, FireRef](c, a.actionProcess.runner.fireDefTable, a.params, a.actionProcess.runner.opts.Random)
+			fire, params, err := lookUpDefTable[Fire, FireRef](c, a.actionProcess.runner.fireDefTable, a.params, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 			fireParams := params
 
-			bullet, params, err := lookUpDefTable[Bullet, BulletRef](fire.BulletOrRef, a.actionProcess.runner.bulletDefTable, params, a.actionProcess.runner.opts.Random)
+			bullet, params, err := lookUpDefTable[Bullet, BulletRef](fire.BulletOrRef, a.actionProcess.runner.bulletDefTable, params, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
@@ -242,21 +238,21 @@ func (a *actionProcessFrame[T]) update() error {
 			blt.SetX(sx)
 			blt.SetY(sy)
 
-			dir, err := calculateDirection(fire.Direction, sx, sy, tx, ty, bullet.Direction, a.actionProcess.latestShoot, fireParams, bulletParams, a.actionProcess.runner.opts.Random)
+			dir, err := calculateDirection(fire.Direction, sx, sy, tx, ty, bullet.Direction, a.actionProcess.latestShoot, fireParams, bulletParams, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			speed, err := calculateSpeed(fire.Speed, bullet.Speed, a.actionProcess.latestShoot, a.actionProcess.runner.opts.DefaultBulletSpeed, fireParams, bulletParams, a.actionProcess.runner.opts.Random)
+			speed, err := calculateSpeed(fire.Speed, bullet.Speed, a.actionProcess.latestShoot, fireParams, bulletParams, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			vx := T(speed * math.Cos(dir))
-			vy := T(speed * math.Sin(dir))
+			vx := speed * math.Cos(dir)
+			vy := speed * math.Sin(dir)
 
 			if len(bullet.Contents) == 0 {
-				a.actionProcess.runner.createActionProcess(nil, params, &bulletModel[T]{
+				a.actionProcess.runner.createActionProcess(nil, params, &bulletModel{
 					bulleter: blt,
 					x:        sx,
 					y:        sy,
@@ -265,12 +261,12 @@ func (a *actionProcessFrame[T]) update() error {
 				})
 			} else {
 				for _, bc := range bullet.Contents {
-					action, actionParams, err := lookUpDefTable[Action, ActionRef](bc, a.actionProcess.runner.actionDefTable, params, a.actionProcess.runner.opts.Random)
+					action, actionParams, err := lookUpDefTable[Action, ActionRef](bc, a.actionProcess.runner.actionDefTable, params, a.actionProcess.runner.opts)
 					if err != nil {
 						return err
 					}
 
-					a.actionProcess.runner.createActionProcess(action, actionParams, &bulletModel[T]{
+					a.actionProcess.runner.createActionProcess(action, actionParams, &bulletModel{
 						bulleter: blt,
 						x:        sx,
 						y:        sy,
@@ -280,13 +276,13 @@ func (a *actionProcessFrame[T]) update() error {
 				}
 			}
 
-			a.actionProcess.latestShoot = &shootInfo[T]{
+			a.actionProcess.latestShoot = &shootInfo{
 				vx: vx,
 				vy: vy,
 			}
 		case ChangeSpeed:
 			if a.waitUntil == nil {
-				term, err := evaluateExpr(c.Term.Expr, a.params, a.actionProcess.runner.opts.Random)
+				term, err := evaluateExpr(c.Term.Expr, a.params, a.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -296,7 +292,7 @@ func (a *actionProcessFrame[T]) update() error {
 					Type: SpeedTypeAbsolute,
 					Expr: fmt.Sprintf("%f", current),
 				}
-				speed, err := calculateSpeed[T](&c.Speed, baseSpeed, nil, a.actionProcess.runner.opts.DefaultBulletSpeed, a.params, nil, a.actionProcess.runner.opts.Random)
+				speed, err := calculateSpeed(&c.Speed, baseSpeed, nil, a.params, nil, a.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -311,8 +307,8 @@ func (a *actionProcessFrame[T]) update() error {
 				dir := math.Atan2(float64(a.actionProcess.bullet.vy), float64(a.actionProcess.bullet.vx))
 				dvx := a.changeDelta * math.Cos(dir)
 				dvy := a.changeDelta * math.Sin(dir)
-				a.actionProcess.bullet.vx += T(dvx)
-				a.actionProcess.bullet.vy += T(dvy)
+				a.actionProcess.bullet.vx += dvx
+				a.actionProcess.bullet.vy += dvy
 				return actionProcessFrameWait
 			} else {
 				a.waitUntil = nil
@@ -320,7 +316,7 @@ func (a *actionProcessFrame[T]) update() error {
 			}
 		case ChangeDirection:
 			if a.waitUntil == nil {
-				term, err := evaluateExpr(c.Term.Expr, a.params, a.actionProcess.runner.opts.Random)
+				term, err := evaluateExpr(c.Term.Expr, a.params, a.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -332,7 +328,7 @@ func (a *actionProcessFrame[T]) update() error {
 					Type: DirectionTypeAbsolute,
 					Expr: fmt.Sprintf("%f", current*180/math.Pi+90),
 				}
-				dir, err := calculateDirection(&c.Direction, sx, sy, tx, ty, baseDir, nil, a.params, nil, a.actionProcess.runner.opts.Random)
+				dir, err := calculateDirection(&c.Direction, sx, sy, tx, ty, baseDir, nil, a.params, nil, a.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -355,16 +351,18 @@ func (a *actionProcessFrame[T]) update() error {
 				dir := math.Atan2(float64(a.actionProcess.bullet.vy), float64(a.actionProcess.bullet.vx))
 				dir += a.changeDelta
 				speed := math.Sqrt(math.Pow(float64(a.actionProcess.bullet.vx), 2) + math.Pow(float64(a.actionProcess.bullet.vy), 2))
-				a.actionProcess.bullet.vx = T(speed * math.Cos(dir))
-				a.actionProcess.bullet.vy = T(speed * math.Sin(dir))
+				a.actionProcess.bullet.vx = speed * math.Cos(dir)
+				a.actionProcess.bullet.vy = speed * math.Sin(dir)
 				return actionProcessFrameWait
 			} else {
 				a.waitUntil = nil
 				a.changeDelta = 0
 			}
+		case Accel:
+			panic("Not implemented")
 		case Wait:
 			if a.waitUntil == nil {
-				wait, err := evaluateExpr(c.Expr, a.params, a.actionProcess.runner.opts.Random)
+				wait, err := evaluateExpr(c.Expr, a.params, a.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -381,18 +379,13 @@ func (a *actionProcessFrame[T]) update() error {
 		case Vanish:
 			a.actionProcess.runner.opts.OnBulletVanished(a.actionProcess.bullet.bulleter)
 			a.actionProcess.bullet.vanished = true
-		case ActionRef:
-			action, params, err := lookUpDefTable[Action, ActionRef](c, a.actionProcess.runner.actionDefTable, a.params, a.actionProcess.runner.opts.Random)
+		case Action, ActionRef:
+			action, params, err := lookUpDefTable[Action, ActionRef](c, a.actionProcess.runner.actionDefTable, a.params, a.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			f := &actionProcessFrame[T]{
-				action:        action,
-				actionProcess: a.actionProcess,
-				params:        params,
-			}
-			a.actionProcess.stack = append(a.actionProcess.stack, f)
+			a.actionProcess.pushStack(action, params)
 
 			a.actionIndex++
 
@@ -405,7 +398,7 @@ func (a *actionProcessFrame[T]) update() error {
 	return actionProcessFrameEnd
 }
 
-func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params []float64, random *rand.Rand) (*T, []float64, error) {
+func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params []float64, opts *NewRunnerOptions) (*T, []float64, error) {
 	if t, ok := typeOrRef.(T); ok {
 		return &t, params, nil
 	} else if r, ok := typeOrRef.(R); ok {
@@ -416,7 +409,7 @@ func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params
 
 		var refParams []float64
 		for _, p := range r.params() {
-			v, err := evaluateExpr(p.Expr, params, random)
+			v, err := evaluateExpr(p.Expr, params, opts)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -429,16 +422,16 @@ func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params
 	}
 }
 
-func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir *Direction, latestShoot *shootInfo[T], dirParams, baseDirParams []float64, random *rand.Rand) (float64, error) {
+func calculateDirection(dir *Direction, sx, sy float64, tx, ty float64, baseDir *Direction, latestShoot *shootInfo, dirParams, baseDirParams []float64, opts *NewRunnerOptions) (float64, error) {
 	if dir == nil {
 		if baseDir != nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, random)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, opts)
 		} else {
 			return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
 		}
 	}
 
-	val, err := evaluateExpr(dir.Expr, dirParams, random)
+	val, err := evaluateExpr(dir.Expr, dirParams, opts)
 	if err != nil {
 		return 0, err
 	}
@@ -451,7 +444,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 	case DirectionTypeAbsolute:
 		return val*math.Pi/180 - math.Pi/2, nil
 	case DirectionTypeRelative:
-		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, random)
+		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, opts)
 		if err != nil {
 			return 0, err
 		}
@@ -459,7 +452,7 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 		return d, nil
 	case DirectionTypeSequence:
 		if latestShoot == nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, random)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, opts)
 		} else {
 			d := math.Atan2(float64(latestShoot.vy), float64(latestShoot.vx))
 			d += val * math.Pi / 180
@@ -470,16 +463,16 @@ func calculateDirection[T Position](dir *Direction, sx, sy T, tx, ty T, baseDir 
 	}
 }
 
-func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *shootInfo[T], defaultSpeed float64, params, baseParams []float64, random *rand.Rand) (float64, error) {
+func calculateSpeed(speed *Speed, baseSpeed *Speed, latestShoot *shootInfo, params, baseParams []float64, opts *NewRunnerOptions) (float64, error) {
 	if speed == nil {
 		if baseSpeed != nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, baseParams, nil, random)
+			return calculateSpeed(baseSpeed, nil, latestShoot, baseParams, nil, opts)
 		} else {
-			return defaultSpeed, nil
+			return opts.DefaultBulletSpeed, nil
 		}
 	}
 
-	val, err := evaluateExpr(speed.Expr, params, random)
+	val, err := evaluateExpr(speed.Expr, params, opts)
 	if err != nil {
 		return 0, err
 	}
@@ -488,7 +481,7 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 	case SpeedTypeAbsolute:
 		return val, nil
 	case SpeedTypeRelative:
-		s, err := calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, baseParams, nil, random)
+		s, err := calculateSpeed(baseSpeed, nil, latestShoot, baseParams, nil, opts)
 		if err != nil {
 			return 0, err
 		}
@@ -496,7 +489,7 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 		return s, nil
 	case SpeedTypeSequence:
 		if latestShoot == nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, defaultSpeed, baseParams, nil, random)
+			return calculateSpeed(baseSpeed, nil, latestShoot, baseParams, nil, opts)
 		} else {
 			s := math.Sqrt(math.Pow(float64(latestShoot.vx), 2) + math.Pow(float64(latestShoot.vy), 2))
 			if err != nil {
@@ -506,16 +499,17 @@ func calculateSpeed[T Position](speed *Speed, baseSpeed *Speed, latestShoot *sho
 			return s, nil
 		}
 	default:
-		return defaultSpeed, nil
+		return opts.DefaultBulletSpeed, nil
 	}
 }
 
 var (
 	variableRegexp = regexp.MustCompile(`\$\d+`)
 	randomRegexp   = regexp.MustCompile(`\$rand`)
+	rankRegexp     = regexp.MustCompile(`\$rank`)
 )
 
-func evaluateExpr(expr string, params []float64, random *rand.Rand) (float64, error) {
+func evaluateExpr(expr string, params []float64, opts *NewRunnerOptions) (float64, error) {
 	expr = variableRegexp.ReplaceAllStringFunc(expr, func(m string) string {
 		i, err := strconv.ParseInt(m[1:], 10, 32)
 		if err != nil {
@@ -529,7 +523,11 @@ func evaluateExpr(expr string, params []float64, random *rand.Rand) (float64, er
 	})
 
 	expr = randomRegexp.ReplaceAllStringFunc(expr, func(_ string) string {
-		return fmt.Sprintf("%f", random.Float64())
+		return fmt.Sprintf("%f", opts.Random.Float64())
+	})
+
+	expr = rankRegexp.ReplaceAllStringFunc(expr, func(_ string) string {
+		return fmt.Sprintf("%f", opts.Rank)
 	})
 
 	tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)

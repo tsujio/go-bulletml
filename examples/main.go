@@ -130,13 +130,13 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *Game) initializeRunner() {
-	opts := &bulletml.NewRunnerOptions[float64]{
-		OnBulletFired: func(_ *bulletml.Bullet) bulletml.Bulleter[float64] {
+	opts := &bulletml.NewRunnerOptions{
+		OnBulletFired: func(_ *bulletml.Bullet) bulletml.Bulleter {
 			b := &bullet{}
 			g.bullets = append(g.bullets, b)
 			return b
 		},
-		OnBulletVanished: func(b bulletml.Bulleter[float64]) {
+		OnBulletVanished: func(b bulletml.Bulleter) {
 			b.(*bullet).vanished = true
 		},
 		CurrentShootPosition: func() (float64, float64) {
