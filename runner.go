@@ -58,8 +58,9 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 
 				if strings.HasPrefix(cts.Label, "top") {
 					p := &actionProcess{
-						runner:           runner,
-						changeSpeedUntil: -1,
+						runner:               runner,
+						changeSpeedUntil:     -1,
+						changeDirectionUntil: -1,
 					}
 					p.pushStack(&cts, nil)
 					runner.actionProcesses = append(runner.actionProcesses, p)
@@ -127,13 +128,16 @@ func (r *runner) Vanished() bool {
 }
 
 type actionProcess struct {
-	ticks             int
-	stack             []*actionProcessFrame
-	changeSpeedUntil  int
-	changeSpeedDelta  float64
-	changeSpeedTarget float64
-	lastShoot         *bulletModel
-	runner            *runner
+	ticks                 int
+	stack                 []*actionProcessFrame
+	changeSpeedUntil      int
+	changeSpeedDelta      float64
+	changeSpeedTarget     float64
+	changeDirectionUntil  int
+	changeDirectionDelta  float64
+	changeDirectionTarget float64
+	lastShoot             *bulletModel
+	runner                *runner
 }
 
 var actionProcessEnd = errors.New("actionProcessEnd")
@@ -164,6 +168,18 @@ func (p *actionProcess) update() error {
 		p.runner.bullet.vy = p.changeSpeedTarget * math.Sin(dir)
 	}
 
+	if p.ticks < p.changeDirectionUntil {
+		dir := math.Atan2(p.runner.bullet.vy, p.runner.bullet.vx)
+		speed := math.Sqrt(math.Pow(p.runner.bullet.vx, 2) + math.Pow(p.runner.bullet.vy, 2))
+		dir += p.changeDirectionDelta
+		p.runner.bullet.vx = speed * math.Cos(dir)
+		p.runner.bullet.vy = speed * math.Sin(dir)
+	} else if p.ticks == p.changeDirectionUntil {
+		speed := math.Sqrt(math.Pow(p.runner.bullet.vx, 2) + math.Pow(p.runner.bullet.vy, 2))
+		p.runner.bullet.vx = speed * math.Cos(p.changeDirectionTarget)
+		p.runner.bullet.vy = speed * math.Sin(p.changeDirectionTarget)
+	}
+
 	p.ticks++
 
 	if len(p.stack) == 0 {
@@ -188,7 +204,6 @@ type actionProcessFrame struct {
 	actionIndex   int
 	repeatIndex   int
 	waitUntil     *uint64
-	changeDelta   float64
 	params        []float64
 	actionProcess *actionProcess
 }
@@ -258,8 +273,9 @@ func (f *actionProcessFrame) update() error {
 				vy: vy,
 			}
 			p := &actionProcess{
-				runner:           &bulletRunner,
-				changeSpeedUntil: -1,
+				runner:               &bulletRunner,
+				changeSpeedUntil:     -1,
+				changeDirectionUntil: -1,
 			}
 			for i := len(bullet.Contents) - 1; i >= 0; i-- {
 				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.Contents[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
@@ -295,49 +311,26 @@ func (f *actionProcessFrame) update() error {
 			f.actionProcess.changeSpeedDelta = (speed - current) / (term + 1)
 			f.actionProcess.changeSpeedTarget = speed
 		case ChangeDirection:
-			if f.waitUntil == nil {
-				term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
-				if err != nil {
-					return err
-				}
-
-				sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
-				tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
-				current := math.Atan2(float64(f.actionProcess.runner.bullet.vy), float64(f.actionProcess.runner.bullet.vx))
-				baseDir := &Direction{
-					Type: DirectionTypeAbsolute,
-					Expr: fmt.Sprintf("%f", current*180/math.Pi+90),
-				}
-				dir, err := calculateDirection(&c.Direction, sx, sy, tx, ty, baseDir, nil, f.params, nil, f.actionProcess.runner.opts)
-				if err != nil {
-					return err
-				}
-
-				w := uint64(f.actionProcess.ticks + int(term))
-				f.waitUntil = &w
-
-				diff := dir - current
-				for diff > math.Pi {
-					diff -= math.Pi * 2
-				}
-				for diff < -math.Pi {
-					diff += math.Pi * 2
-				}
-
-				f.changeDelta = diff / term
+			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
+			if err != nil {
+				return err
 			}
 
-			if *f.waitUntil > uint64(f.actionProcess.ticks) {
-				dir := math.Atan2(float64(f.actionProcess.runner.bullet.vy), float64(f.actionProcess.runner.bullet.vx))
-				dir += f.changeDelta
-				speed := math.Sqrt(math.Pow(float64(f.actionProcess.runner.bullet.vx), 2) + math.Pow(float64(f.actionProcess.runner.bullet.vy), 2))
-				f.actionProcess.runner.bullet.vx = speed * math.Cos(dir)
-				f.actionProcess.runner.bullet.vy = speed * math.Sin(dir)
-				return actionProcessFrameWait
-			} else {
-				f.waitUntil = nil
-				f.changeDelta = 0
+			sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
+			tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
+			current := math.Atan2(float64(f.actionProcess.runner.bullet.vy), float64(f.actionProcess.runner.bullet.vx))
+			baseDir := &Direction{
+				Type: DirectionTypeAbsolute,
+				Expr: fmt.Sprintf("%f", current*180/math.Pi+90),
 			}
+			dir, err := calculateDirection(&c.Direction, sx, sy, tx, ty, baseDir, nil, f.params, nil, f.actionProcess.runner.opts)
+			if err != nil {
+				return err
+			}
+
+			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
+			f.actionProcess.changeDirectionDelta = normalizeDir(dir-current) / (term + 1)
+			f.actionProcess.changeDirectionTarget = normalizeDir(dir)
 		case Accel:
 			panic("Not implemented")
 		case Wait:
@@ -517,4 +510,14 @@ func evaluateExpr(expr string, params []float64, opts *NewRunnerOptions) (float6
 	v, _ := constant.Float64Val(tv.Value)
 
 	return v, nil
+}
+
+func normalizeDir(dir float64) float64 {
+	for dir > math.Pi {
+		dir -= math.Pi * 2
+	}
+	for dir < -math.Pi {
+		dir += math.Pi * 2
+	}
+	return dir
 }

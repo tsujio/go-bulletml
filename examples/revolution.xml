@@ -6,25 +6,27 @@
             <times>2</times>
             <action>
                 <changeDirection>
-                    <term>3.14 * $1 / 4</term>
+                    <term>3.14 * $1 / 4 - 1</term>
                     <direction type="relative">-90</direction>
                 </changeDirection>
+                <wait>3.14 * $1 / 4</wait>
             </action>
         </repeat>
         <repeat>
             <times>999</times>
             <action>
                 <changeDirection>
-                    <term>3.14 * $1 / 2</term>
+                    <term>3.14 * $1 / 2 - 1</term>
                     <direction type="relative">-90</direction>
                 </changeDirection>
+                <wait>3.14 * $1 / 2</wait>
             </action>
         </repeat>
         <vanish />
     </action>
     <action label="top">
         <repeat>
-            <times>999</times>
+            <times>3</times>
             <action>
                 <fire>
                     <direction type="absolute">180</direction>
