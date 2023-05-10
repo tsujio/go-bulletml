@@ -75,9 +75,10 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 }
 
 type bulletModel struct {
-	x, y     float64
-	vx, vy   float64
-	vanished bool
+	x, y      float64
+	speed     float64
+	direction float64
+	vanished  bool
 }
 
 type runner struct {
@@ -123,8 +124,8 @@ func (r *runner) Update() error {
 	r.actionProcesses = newActionProcesses
 
 	if r.bullet != nil && !r.bullet.vanished {
-		r.bullet.x += r.bullet.vx
-		r.bullet.y += r.bullet.vy
+		r.bullet.x += r.bullet.speed * math.Cos(r.bullet.direction)
+		r.bullet.y += r.bullet.speed * math.Sin(r.bullet.direction)
 	}
 
 	return nil
@@ -171,27 +172,15 @@ func (p *actionProcess) update() error {
 	}
 
 	if p.ticks < p.changeSpeedUntil {
-		dir := math.Atan2(p.runner.bullet.vy, p.runner.bullet.vx)
-		dvx := p.changeSpeedDelta * math.Cos(dir)
-		dvy := p.changeSpeedDelta * math.Sin(dir)
-		p.runner.bullet.vx += dvx
-		p.runner.bullet.vy += dvy
+		p.runner.bullet.speed += p.changeSpeedDelta
 	} else if p.ticks == p.changeSpeedUntil {
-		dir := math.Atan2(p.runner.bullet.vy, p.runner.bullet.vx)
-		p.runner.bullet.vx = p.changeSpeedTarget * math.Cos(dir)
-		p.runner.bullet.vy = p.changeSpeedTarget * math.Sin(dir)
+		p.runner.bullet.speed = p.changeSpeedTarget
 	}
 
 	if p.ticks < p.changeDirectionUntil {
-		dir := math.Atan2(p.runner.bullet.vy, p.runner.bullet.vx)
-		speed := math.Sqrt(math.Pow(p.runner.bullet.vx, 2) + math.Pow(p.runner.bullet.vy, 2))
-		dir += p.changeDirectionDelta
-		p.runner.bullet.vx = speed * math.Cos(dir)
-		p.runner.bullet.vy = speed * math.Sin(dir)
+		p.runner.bullet.direction += p.changeDirectionDelta
 	} else if p.ticks == p.changeDirectionUntil {
-		speed := math.Sqrt(math.Pow(p.runner.bullet.vx, 2) + math.Pow(p.runner.bullet.vy, 2))
-		p.runner.bullet.vx = speed * math.Cos(p.changeDirectionTarget)
-		p.runner.bullet.vy = speed * math.Sin(p.changeDirectionTarget)
+		p.runner.bullet.direction = p.changeDirectionTarget
 	}
 
 	p.ticks++
@@ -275,17 +264,14 @@ func (f *actionProcessFrame) update() error {
 				return err
 			}
 
-			vx := speed * math.Cos(dir)
-			vy := speed * math.Sin(dir)
-
 			bulletRunner := &runner{
 				bulletML: f.actionProcess.runner.bulletML,
 				opts:     f.actionProcess.runner.opts,
 				bullet: &bulletModel{
-					x:  sx,
-					y:  sy,
-					vx: vx,
-					vy: vy,
+					x:         sx,
+					y:         sy,
+					speed:     speed,
+					direction: dir,
 				},
 				actionDefTable: f.actionProcess.runner.actionDefTable,
 				fireDefTable:   f.actionProcess.runner.fireDefTable,
@@ -311,10 +297,9 @@ func (f *actionProcessFrame) update() error {
 				return err
 			}
 
-			current := math.Sqrt(math.Pow(float64(f.actionProcess.runner.bullet.vx), 2) + math.Pow(float64(f.actionProcess.runner.bullet.vy), 2))
 			baseSpeed := &Speed{
 				Type: SpeedTypeAbsolute,
-				Expr: fmt.Sprintf("%f", current),
+				Expr: fmt.Sprintf("%f", f.actionProcess.runner.bullet.speed),
 			}
 			speed, err := calculateSpeed(&c.Speed, baseSpeed, nil, f.params, nil, f.actionProcess.runner.opts)
 			if err != nil {
@@ -322,7 +307,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
-			f.actionProcess.changeSpeedDelta = (speed - current) / (term + 1)
+			f.actionProcess.changeSpeedDelta = (speed - f.actionProcess.runner.bullet.speed) / (term + 1)
 			f.actionProcess.changeSpeedTarget = speed
 		case ChangeDirection:
 			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
@@ -332,10 +317,9 @@ func (f *actionProcessFrame) update() error {
 
 			sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
 			tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
-			current := math.Atan2(float64(f.actionProcess.runner.bullet.vy), float64(f.actionProcess.runner.bullet.vx))
 			baseDir := &Direction{
 				Type: DirectionTypeAbsolute,
-				Expr: fmt.Sprintf("%f", current*180/math.Pi+90),
+				Expr: fmt.Sprintf("%f", f.actionProcess.runner.bullet.direction*180/math.Pi+90),
 			}
 			dir, err := calculateDirection(&c.Direction, sx, sy, tx, ty, baseDir, nil, f.params, nil, f.actionProcess.runner.opts)
 			if err != nil {
@@ -343,7 +327,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
-			f.actionProcess.changeDirectionDelta = normalizeDir(dir-current) / (term + 1)
+			f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / (term + 1)
 			f.actionProcess.changeDirectionTarget = normalizeDir(dir)
 		case Accel:
 			panic("Not implemented")
@@ -403,10 +387,10 @@ func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params
 	}
 }
 
-func calculateDirection(dir *Direction, sx, sy float64, tx, ty float64, baseDir *Direction, latestShoot *bulletModel, dirParams, baseDirParams []float64, opts *NewRunnerOptions) (float64, error) {
+func calculateDirection(dir *Direction, sx, sy float64, tx, ty float64, baseDir *Direction, lastShoot *bulletModel, dirParams, baseDirParams []float64, opts *NewRunnerOptions) (float64, error) {
 	if dir == nil {
 		if baseDir != nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, opts)
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, lastShoot, baseDirParams, nil, opts)
 		} else {
 			return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
 		}
@@ -425,29 +409,27 @@ func calculateDirection(dir *Direction, sx, sy float64, tx, ty float64, baseDir 
 	case DirectionTypeAbsolute:
 		return val*math.Pi/180 - math.Pi/2, nil
 	case DirectionTypeRelative:
-		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, opts)
+		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, lastShoot, baseDirParams, nil, opts)
 		if err != nil {
 			return 0, err
 		}
 		d += val * math.Pi / 180
 		return d, nil
 	case DirectionTypeSequence:
-		if latestShoot == nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, latestShoot, baseDirParams, nil, opts)
+		if lastShoot == nil {
+			return calculateDirection(baseDir, sx, sy, tx, ty, nil, lastShoot, baseDirParams, nil, opts)
 		} else {
-			d := math.Atan2(float64(latestShoot.vy), float64(latestShoot.vx))
-			d += val * math.Pi / 180
-			return d, nil
+			return lastShoot.direction + val*math.Pi/180, nil
 		}
 	default:
 		return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
 	}
 }
 
-func calculateSpeed(speed *Speed, baseSpeed *Speed, latestShoot *bulletModel, params, baseParams []float64, opts *NewRunnerOptions) (float64, error) {
+func calculateSpeed(speed *Speed, baseSpeed *Speed, lastShoot *bulletModel, params, baseParams []float64, opts *NewRunnerOptions) (float64, error) {
 	if speed == nil {
 		if baseSpeed != nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, baseParams, nil, opts)
+			return calculateSpeed(baseSpeed, nil, lastShoot, baseParams, nil, opts)
 		} else {
 			return opts.DefaultBulletSpeed, nil
 		}
@@ -462,22 +444,17 @@ func calculateSpeed(speed *Speed, baseSpeed *Speed, latestShoot *bulletModel, pa
 	case SpeedTypeAbsolute:
 		return val, nil
 	case SpeedTypeRelative:
-		s, err := calculateSpeed(baseSpeed, nil, latestShoot, baseParams, nil, opts)
+		s, err := calculateSpeed(baseSpeed, nil, lastShoot, baseParams, nil, opts)
 		if err != nil {
 			return 0, err
 		}
 		s += val
 		return s, nil
 	case SpeedTypeSequence:
-		if latestShoot == nil {
-			return calculateSpeed(baseSpeed, nil, latestShoot, baseParams, nil, opts)
+		if lastShoot == nil {
+			return calculateSpeed(baseSpeed, nil, lastShoot, baseParams, nil, opts)
 		} else {
-			s := math.Sqrt(math.Pow(float64(latestShoot.vx), 2) + math.Pow(float64(latestShoot.vy), 2))
-			if err != nil {
-				return 0, err
-			}
-			s += val
-			return s, nil
+			return lastShoot.speed + val, nil
 		}
 	default:
 		return opts.DefaultBulletSpeed, nil
