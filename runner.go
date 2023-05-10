@@ -75,10 +75,11 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 }
 
 type bulletModel struct {
-	x, y      float64
-	speed     float64
-	direction float64
-	vanished  bool
+	x, y                                     float64
+	speed                                    float64
+	direction                                float64
+	accelSpeedHorizontal, accelSpeedVertical float64
+	vanished                                 bool
 }
 
 type runner struct {
@@ -97,6 +98,7 @@ func (r *runner) createActionProcess(action *Action, params []float64) *actionPr
 		waitUntil:            -1,
 		changeSpeedUntil:     -1,
 		changeDirectionUntil: -1,
+		accelUntil:           -1,
 	}
 
 	if action != nil {
@@ -126,6 +128,8 @@ func (r *runner) Update() error {
 	if r.bullet != nil && !r.bullet.vanished {
 		r.bullet.x += r.bullet.speed * math.Cos(r.bullet.direction)
 		r.bullet.y += r.bullet.speed * math.Sin(r.bullet.direction)
+		r.bullet.x += r.bullet.accelSpeedHorizontal
+		r.bullet.y += r.bullet.accelSpeedVertical
 	}
 
 	return nil
@@ -140,17 +144,18 @@ func (r *runner) Vanished() bool {
 }
 
 type actionProcess struct {
-	ticks                 int
-	stack                 []*actionProcessFrame
-	waitUntil             int
-	changeSpeedUntil      int
-	changeSpeedDelta      float64
-	changeSpeedTarget     float64
-	changeDirectionUntil  int
-	changeDirectionDelta  float64
-	changeDirectionTarget float64
-	lastShoot             *bulletModel
-	runner                *runner
+	ticks                                       int
+	stack                                       []*actionProcessFrame
+	waitUntil                                   int
+	changeSpeedUntil                            int
+	changeSpeedDelta, changeSpeedTarget         float64
+	changeDirectionUntil                        int
+	changeDirectionDelta, changeDirectionTarget float64
+	accelUntil                                  int
+	accelHorizontalDelta, accelHorizontalTarget float64
+	accelVerticalDelta, accelVerticalTarget     float64
+	lastShoot                                   *bulletModel
+	runner                                      *runner
 }
 
 var actionProcessEnd = errors.New("actionProcessEnd")
@@ -181,6 +186,14 @@ func (p *actionProcess) update() error {
 		p.runner.bullet.direction += p.changeDirectionDelta
 	} else if p.ticks == p.changeDirectionUntil {
 		p.runner.bullet.direction = p.changeDirectionTarget
+	}
+
+	if p.ticks < p.accelUntil {
+		p.runner.bullet.accelSpeedHorizontal += p.accelHorizontalDelta
+		p.runner.bullet.accelSpeedVertical += p.accelVerticalDelta
+	} else if p.ticks == p.accelUntil {
+		p.runner.bullet.accelSpeedHorizontal = p.accelHorizontalTarget
+		p.runner.bullet.accelSpeedVertical = p.accelVerticalTarget
 	}
 
 	p.ticks++
@@ -330,7 +343,54 @@ func (f *actionProcessFrame) update() error {
 			f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / (term + 1)
 			f.actionProcess.changeDirectionTarget = normalizeDir(dir)
 		case Accel:
-			panic("Not implemented")
+			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
+			if err != nil {
+				return err
+			}
+
+			f.actionProcess.accelUntil = f.actionProcess.ticks + int(term)
+
+			if c.Horizontal != nil {
+				horizontal, err := evaluateExpr(c.Horizontal.Expr, f.params, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+
+				switch c.Horizontal.Type {
+				case HorizontalTypeAbsolute, HorizontalTypeSequence:
+					f.actionProcess.accelHorizontalDelta = (horizontal - f.actionProcess.runner.bullet.accelSpeedHorizontal) / (term + 1)
+					f.actionProcess.accelHorizontalTarget = horizontal
+				case HorizontalTypeRelative:
+					f.actionProcess.accelHorizontalDelta = horizontal
+					f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal + horizontal*(term+1)
+				default:
+					return fmt.Errorf("Invalid type '%s' for <horizontal> element", string(c.Horizontal.Type))
+				}
+			} else {
+				f.actionProcess.accelHorizontalDelta = 0
+				f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal
+			}
+
+			if c.Vertical != nil {
+				vertical, err := evaluateExpr(c.Vertical.Expr, f.params, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+
+				switch c.Vertical.Type {
+				case VerticalTypeAbsolute, VerticalTypeSequence:
+					f.actionProcess.accelVerticalDelta = (vertical - f.actionProcess.runner.bullet.accelSpeedVertical) / (term + 1)
+					f.actionProcess.accelVerticalTarget = vertical
+				case VerticalTypeRelative:
+					f.actionProcess.accelVerticalDelta = vertical
+					f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical + vertical*(term+1)
+				default:
+					return fmt.Errorf("Invalid type '%s' for <vertical> element", string(c.Vertical.Type))
+				}
+			} else {
+				f.actionProcess.accelVerticalDelta = 0
+				f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical
+			}
 		case Wait:
 			wait, err := evaluateExpr(c.Expr, f.params, f.actionProcess.runner.opts)
 			if err != nil {
