@@ -57,14 +57,7 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 				runner.actionDefTable[cts.Label] = &cts
 
 				if strings.HasPrefix(cts.Label, "top") {
-					p := &actionProcess{
-						runner:               runner,
-						waitUntil:            -1,
-						changeSpeedUntil:     -1,
-						changeDirectionUntil: -1,
-					}
-					p.pushStack(&cts, nil)
-					runner.actionProcesses = append(runner.actionProcesses, p)
+					runner.createActionProcess(&cts, nil)
 				}
 			}
 		case Fire:
@@ -95,6 +88,23 @@ type runner struct {
 	actionDefTable  map[string]*Action
 	fireDefTable    map[string]*Fire
 	bulletDefTable  map[string]*Bullet
+}
+
+func (r *runner) createActionProcess(action *Action, params []float64) *actionProcess {
+	p := &actionProcess{
+		runner:               r,
+		waitUntil:            -1,
+		changeSpeedUntil:     -1,
+		changeDirectionUntil: -1,
+	}
+
+	if action != nil {
+		p.pushStack(action, params)
+	}
+
+	r.actionProcesses = append(r.actionProcesses, p)
+
+	return p
 }
 
 func (r *runner) Update() error {
@@ -268,19 +278,20 @@ func (f *actionProcessFrame) update() error {
 			vx := speed * math.Cos(dir)
 			vy := speed * math.Sin(dir)
 
-			bulletRunner := *f.actionProcess.runner
-			bulletRunner.bullet = &bulletModel{
-				x:  sx,
-				y:  sy,
-				vx: vx,
-				vy: vy,
+			bulletRunner := &runner{
+				bulletML: f.actionProcess.runner.bulletML,
+				opts:     f.actionProcess.runner.opts,
+				bullet: &bulletModel{
+					x:  sx,
+					y:  sy,
+					vx: vx,
+					vy: vy,
+				},
+				actionDefTable: f.actionProcess.runner.actionDefTable,
+				fireDefTable:   f.actionProcess.runner.fireDefTable,
+				bulletDefTable: f.actionProcess.runner.bulletDefTable,
 			}
-			p := &actionProcess{
-				runner:               &bulletRunner,
-				waitUntil:            -1,
-				changeSpeedUntil:     -1,
-				changeDirectionUntil: -1,
-			}
+			p := bulletRunner.createActionProcess(nil, nil)
 			for i := len(bullet.Contents) - 1; i >= 0; i-- {
 				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.Contents[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
 				if err != nil {
@@ -289,9 +300,8 @@ func (f *actionProcessFrame) update() error {
 
 				p.pushStack(action, actionParams)
 			}
-			bulletRunner.actionProcesses = []*actionProcess{p}
 
-			f.actionProcess.runner.opts.OnBulletFired(&bulletRunner)
+			f.actionProcess.runner.opts.OnBulletFired(bulletRunner)
 
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
