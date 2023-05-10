@@ -58,7 +58,8 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 
 				if strings.HasPrefix(cts.Label, "top") {
 					p := &actionProcess{
-						runner: runner,
+						runner:           runner,
+						changeSpeedUntil: -1,
 					}
 					p.pushStack(&cts, nil)
 					runner.actionProcesses = append(runner.actionProcesses, p)
@@ -126,17 +127,18 @@ func (r *runner) Vanished() bool {
 }
 
 type actionProcess struct {
-	ticks     uint64
-	stack     []*actionProcessFrame
-	lastShoot *bulletModel
-	runner    *runner
+	ticks             int
+	stack             []*actionProcessFrame
+	changeSpeedUntil  int
+	changeSpeedDelta  float64
+	changeSpeedTarget float64
+	lastShoot         *bulletModel
+	runner            *runner
 }
 
 var actionProcessEnd = errors.New("actionProcessEnd")
 
 func (p *actionProcess) update() error {
-	p.ticks++
-
 	for len(p.stack) > 0 {
 		top := p.stack[len(p.stack)-1]
 		if err := top.update(); err != nil {
@@ -149,6 +151,20 @@ func (p *actionProcess) update() error {
 			}
 		}
 	}
+
+	if p.ticks < p.changeSpeedUntil {
+		dir := math.Atan2(p.runner.bullet.vy, p.runner.bullet.vx)
+		dvx := p.changeSpeedDelta * math.Cos(dir)
+		dvy := p.changeSpeedDelta * math.Sin(dir)
+		p.runner.bullet.vx += dvx
+		p.runner.bullet.vy += dvy
+	} else if p.ticks == p.changeSpeedUntil {
+		dir := math.Atan2(p.runner.bullet.vy, p.runner.bullet.vx)
+		p.runner.bullet.vx = p.changeSpeedTarget * math.Cos(dir)
+		p.runner.bullet.vy = p.changeSpeedTarget * math.Sin(dir)
+	}
+
+	p.ticks++
 
 	if len(p.stack) == 0 {
 		return actionProcessEnd
@@ -242,7 +258,8 @@ func (f *actionProcessFrame) update() error {
 				vy: vy,
 			}
 			p := &actionProcess{
-				runner: &bulletRunner,
+				runner:           &bulletRunner,
+				changeSpeedUntil: -1,
 			}
 			for i := len(bullet.Contents) - 1; i >= 0; i-- {
 				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.Contents[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
@@ -259,39 +276,24 @@ func (f *actionProcessFrame) update() error {
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
 		case ChangeSpeed:
-			if f.waitUntil == nil {
-				term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
-				if err != nil {
-					return err
-				}
-
-				current := math.Sqrt(math.Pow(float64(f.actionProcess.runner.bullet.vx), 2) + math.Pow(float64(f.actionProcess.runner.bullet.vy), 2))
-				baseSpeed := &Speed{
-					Type: SpeedTypeAbsolute,
-					Expr: fmt.Sprintf("%f", current),
-				}
-				speed, err := calculateSpeed(&c.Speed, baseSpeed, nil, f.params, nil, f.actionProcess.runner.opts)
-				if err != nil {
-					return err
-				}
-
-				w := f.actionProcess.ticks + uint64(term)
-				f.waitUntil = &w
-
-				f.changeDelta = (speed - current) / term
+			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
+			if err != nil {
+				return err
 			}
 
-			if *f.waitUntil > f.actionProcess.ticks {
-				dir := math.Atan2(float64(f.actionProcess.runner.bullet.vy), float64(f.actionProcess.runner.bullet.vx))
-				dvx := f.changeDelta * math.Cos(dir)
-				dvy := f.changeDelta * math.Sin(dir)
-				f.actionProcess.runner.bullet.vx += dvx
-				f.actionProcess.runner.bullet.vy += dvy
-				return actionProcessFrameWait
-			} else {
-				f.waitUntil = nil
-				f.changeDelta = 0
+			current := math.Sqrt(math.Pow(float64(f.actionProcess.runner.bullet.vx), 2) + math.Pow(float64(f.actionProcess.runner.bullet.vy), 2))
+			baseSpeed := &Speed{
+				Type: SpeedTypeAbsolute,
+				Expr: fmt.Sprintf("%f", current),
 			}
+			speed, err := calculateSpeed(&c.Speed, baseSpeed, nil, f.params, nil, f.actionProcess.runner.opts)
+			if err != nil {
+				return err
+			}
+
+			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
+			f.actionProcess.changeSpeedDelta = (speed - current) / (term + 1)
+			f.actionProcess.changeSpeedTarget = speed
 		case ChangeDirection:
 			if f.waitUntil == nil {
 				term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
@@ -311,7 +313,7 @@ func (f *actionProcessFrame) update() error {
 					return err
 				}
 
-				w := f.actionProcess.ticks + uint64(term)
+				w := uint64(f.actionProcess.ticks + int(term))
 				f.waitUntil = &w
 
 				diff := dir - current
@@ -325,7 +327,7 @@ func (f *actionProcessFrame) update() error {
 				f.changeDelta = diff / term
 			}
 
-			if *f.waitUntil > f.actionProcess.ticks {
+			if *f.waitUntil > uint64(f.actionProcess.ticks) {
 				dir := math.Atan2(float64(f.actionProcess.runner.bullet.vy), float64(f.actionProcess.runner.bullet.vx))
 				dir += f.changeDelta
 				speed := math.Sqrt(math.Pow(float64(f.actionProcess.runner.bullet.vx), 2) + math.Pow(float64(f.actionProcess.runner.bullet.vy), 2))
@@ -345,11 +347,11 @@ func (f *actionProcessFrame) update() error {
 					return err
 				}
 
-				w := f.actionProcess.ticks + uint64(wait)
+				w := uint64(f.actionProcess.ticks + int(wait))
 				f.waitUntil = &w
 			}
 
-			if *f.waitUntil > f.actionProcess.ticks {
+			if *f.waitUntil > uint64(f.actionProcess.ticks) {
 				return actionProcessFrameWait
 			} else {
 				f.waitUntil = nil
