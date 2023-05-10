@@ -9,7 +9,7 @@
                     <term>3.14 * $1 / 4 - 1</term>
                     <direction type="relative">-90</direction>
                 </changeDirection>
-                <wait>3.14 * $1 / 4</wait>
+                <wait>3.14 * $1 / 4 - 1</wait>
             </action>
         </repeat>
         <repeat>
@@ -19,14 +19,14 @@
                     <term>3.14 * $1 / 2 - 1</term>
                     <direction type="relative">-90</direction>
                 </changeDirection>
-                <wait>3.14 * $1 / 2</wait>
+                <wait>3.14 * $1 / 2 - 1</wait>
             </action>
         </repeat>
         <vanish />
     </action>
     <action label="top">
         <repeat>
-            <times>3</times>
+            <times>999</times>
             <action>
                 <fire>
                     <direction type="absolute">180</direction>

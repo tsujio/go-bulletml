@@ -59,6 +59,7 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 				if strings.HasPrefix(cts.Label, "top") {
 					p := &actionProcess{
 						runner:               runner,
+						waitUntil:            -1,
 						changeSpeedUntil:     -1,
 						changeDirectionUntil: -1,
 					}
@@ -130,6 +131,7 @@ func (r *runner) Vanished() bool {
 type actionProcess struct {
 	ticks                 int
 	stack                 []*actionProcessFrame
+	waitUntil             int
 	changeSpeedUntil      int
 	changeSpeedDelta      float64
 	changeSpeedTarget     float64
@@ -143,15 +145,17 @@ type actionProcess struct {
 var actionProcessEnd = errors.New("actionProcessEnd")
 
 func (p *actionProcess) update() error {
-	for len(p.stack) > 0 {
-		top := p.stack[len(p.stack)-1]
-		if err := top.update(); err != nil {
-			if err == actionProcessFrameEnd {
-				p.stack = p.stack[:len(p.stack)-1]
-			} else if err == actionProcessFrameWait {
-				break
-			} else {
-				return err
+	if p.ticks > p.waitUntil {
+		for len(p.stack) > 0 {
+			top := p.stack[len(p.stack)-1]
+			if err := top.update(); err != nil {
+				if err == actionProcessFrameEnd {
+					p.stack = p.stack[:len(p.stack)-1]
+				} else if err == actionProcessFrameWait {
+					break
+				} else {
+					return err
+				}
 			}
 		}
 	}
@@ -182,7 +186,7 @@ func (p *actionProcess) update() error {
 
 	p.ticks++
 
-	if len(p.stack) == 0 {
+	if len(p.stack) == 0 && p.ticks >= p.changeSpeedUntil && p.ticks >= p.changeDirectionUntil {
 		return actionProcessEnd
 	}
 
@@ -203,7 +207,6 @@ type actionProcessFrame struct {
 	action        *Action
 	actionIndex   int
 	repeatIndex   int
-	waitUntil     *uint64
 	params        []float64
 	actionProcess *actionProcess
 }
@@ -274,6 +277,7 @@ func (f *actionProcessFrame) update() error {
 			}
 			p := &actionProcess{
 				runner:               &bulletRunner,
+				waitUntil:            -1,
 				changeSpeedUntil:     -1,
 				changeDirectionUntil: -1,
 			}
@@ -334,21 +338,16 @@ func (f *actionProcessFrame) update() error {
 		case Accel:
 			panic("Not implemented")
 		case Wait:
-			if f.waitUntil == nil {
-				wait, err := evaluateExpr(c.Expr, f.params, f.actionProcess.runner.opts)
-				if err != nil {
-					return err
-				}
-
-				w := uint64(f.actionProcess.ticks + int(wait))
-				f.waitUntil = &w
+			wait, err := evaluateExpr(c.Expr, f.params, f.actionProcess.runner.opts)
+			if err != nil {
+				return err
 			}
 
-			if *f.waitUntil > uint64(f.actionProcess.ticks) {
-				return actionProcessFrameWait
-			} else {
-				f.waitUntil = nil
-			}
+			f.actionProcess.waitUntil = f.actionProcess.ticks + int(wait)
+
+			f.actionIndex++
+
+			return actionProcessFrameWait
 		case Vanish:
 			f.actionProcess.runner.bullet.vanished = true
 		case Action, ActionRef:
