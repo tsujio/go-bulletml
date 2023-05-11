@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/rand"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -549,29 +548,25 @@ var (
 )
 
 func evaluateExpr(expr string, params []float64, opts *NewRunnerOptions) (float64, error) {
-	expr = variableRegexp.ReplaceAllStringFunc(expr, func(m string) string {
-		i, err := strconv.ParseInt(m[1:], 10, 32)
-		if err != nil {
-			return ""
-		}
-		i -= 1
-		if int(i) >= len(params) {
-			return ""
-		}
-		return fmt.Sprintf("%f", params[i])
-	})
+	expr = strings.ReplaceAll(expr, "$", "V_")
 
-	expr = randomRegexp.ReplaceAllStringFunc(expr, func(_ string) string {
-		return fmt.Sprintf("%f", opts.Random.Float64())
-	})
+	pkg := types.NewPackage("main", "main")
 
-	expr = rankRegexp.ReplaceAllStringFunc(expr, func(_ string) string {
-		return fmt.Sprintf("%f", opts.Rank)
-	})
+	for i, p := range params {
+		pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, fmt.Sprintf("V_%d", i+1), types.Typ[types.Float64], constant.MakeFloat64(p)))
+	}
 
-	tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
+	pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_rand", types.Typ[types.Float64], constant.MakeFloat64(opts.Random.Float64())))
+
+	pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_rank", types.Typ[types.Float64], constant.MakeFloat64(opts.Rank)))
+
+	tv, err := types.Eval(token.NewFileSet(), pkg, token.NoPos, expr)
 	if err != nil {
 		return 0, err
+	}
+
+	if !types.ConvertibleTo(tv.Type, types.Typ[types.Float64]) {
+		return 0, fmt.Errorf("Invalid type '%s' as result of expr", tv.Type.String())
 	}
 
 	v, _ := constant.Float64Val(tv.Value)
