@@ -100,7 +100,7 @@ type runner struct {
 	bulletDefTable       map[string]*Bullet
 }
 
-func (r *runner) createActionProcess(action *Action, params []float64) *actionProcess {
+func (r *runner) createActionProcess(action *Action, params parameters) *actionProcess {
 	p := &actionProcess{
 		runner:               r,
 		waitUntil:            -1,
@@ -209,7 +209,7 @@ func (p *actionProcess) update() error {
 	return nil
 }
 
-func (p *actionProcess) pushStack(action *Action, params []float64) {
+func (p *actionProcess) pushStack(action *Action, params parameters) {
 	f := &actionProcessFrame{
 		action:        action,
 		actionProcess: p,
@@ -219,11 +219,13 @@ func (p *actionProcess) pushStack(action *Action, params []float64) {
 	p.stack = append(p.stack, f)
 }
 
+type parameters map[string]float64
+
 type actionProcessFrame struct {
 	action        *Action
 	actionIndex   int
 	repeatIndex   int
-	params        []float64
+	params        parameters
 	actionProcess *actionProcess
 }
 
@@ -246,8 +248,15 @@ func (f *actionProcessFrame) update() error {
 				return err
 			}
 
+			prms := make(parameters)
+			for k, v := range params {
+				prms[k] = v
+			}
+
 			if f.repeatIndex < int(repeat) {
-				f.actionProcess.pushStack(action, params)
+				prms["$loop.index"] = float64(f.repeatIndex)
+
+				f.actionProcess.pushStack(action, prms)
 
 				f.repeatIndex++
 
@@ -517,7 +526,7 @@ func (f *actionProcessFrame) update() error {
 	return actionProcessFrameEnd
 }
 
-func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params []float64, opts *NewRunnerOptions) (*T, []float64, error) {
+func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params parameters, opts *NewRunnerOptions) (*T, parameters, error) {
 	if t, ok := typeOrRef.(T); ok {
 		return &t, params, nil
 	} else if r, ok := typeOrRef.(R); ok {
@@ -526,13 +535,14 @@ func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params
 			return nil, nil, fmt.Errorf("<%s label=\"%s\"> not found", r.xmlName(), r.label())
 		}
 
-		var refParams []float64
-		for _, p := range r.params() {
+		refParams := make(parameters)
+		for i, p := range r.params() {
 			v, err := evaluateExpr(p.Expr, params, opts)
 			if err != nil {
 				return nil, nil, err
 			}
-			refParams = append(refParams, v)
+
+			refParams[fmt.Sprintf("$%d", i+1)] = v
 		}
 
 		return t, refParams, nil
@@ -547,18 +557,24 @@ var (
 	rankRegexp     = regexp.MustCompile(`\$rank`)
 )
 
-func evaluateExpr(expr string, params []float64, opts *NewRunnerOptions) (float64, error) {
+func evaluateExpr(expr string, params parameters, opts *NewRunnerOptions) (float64, error) {
 	expr = strings.ReplaceAll(expr, "$", "V_")
 
 	pkg := types.NewPackage("main", "main")
 
-	for i, p := range params {
-		pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, fmt.Sprintf("V_%d", i+1), types.Typ[types.Float64], constant.MakeFloat64(p)))
+	for k, v := range params {
+		k = strings.ReplaceAll(k, "$", "V_")
+		pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, k, types.Typ[types.Float64], constant.MakeFloat64(v)))
 	}
 
 	pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_rand", types.Typ[types.Float64], constant.MakeFloat64(opts.Random.Float64())))
 
 	pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_rank", types.Typ[types.Float64], constant.MakeFloat64(opts.Rank)))
+
+	if index, exists := params["$loop.index"]; exists {
+		expr = strings.ReplaceAll(expr, "V_loop.index", "V_loop_index")
+		pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_loop_index", types.Typ[types.Float64], constant.MakeFloat64(index)))
+	}
 
 	tv, err := types.Eval(token.NewFileSet(), pkg, token.NoPos, expr)
 	if err != nil {
