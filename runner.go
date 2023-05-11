@@ -1,14 +1,17 @@
 package bulletml
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"go/constant"
+	"go/ast"
+	"go/format"
+	"go/parser"
 	"go/token"
-	"go/types"
 	"math"
 	"math/rand"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -557,48 +560,116 @@ var (
 )
 
 func evaluateExpr(expr string, params parameters, opts *NewRunnerOptions) (float64, error) {
-	expr = variableRegexp.ReplaceAllStringFunc(expr, func(m string) string {
-		switch m {
-		case "$rand":
-			return fmt.Sprintf("%f", opts.Random.Float64())
-		case "$rank":
-			return fmt.Sprintf("%f", opts.Rank)
-		default:
-			if v, exists := params[m]; exists {
-				return fmt.Sprintf("%f", v)
-			} else {
-				return ""
-			}
-		}
-	})
+	expr = strings.ReplaceAll(expr, "$", "V_")
+	expr = strings.ReplaceAll(expr, "V_loop.", "V_loop_")
 
-	expr = funcRegexp.ReplaceAllStringFunc(expr, func(m string) string {
-		idx := strings.Index(m, "(")
-		argExpr := m[idx+1 : len(m)-1]
-		tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, argExpr)
-		if err != nil {
-			return ""
-		}
-		arg, _ := constant.Float64Val(tv.Value)
-
-		switch m[:idx] {
-		case "sin":
-			return fmt.Sprintf("%f", math.Sin(arg))
-		case "cos":
-			return fmt.Sprintf("%f", math.Cos(arg))
-		default:
-			return ""
-		}
-	})
-
-	tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
+	root, err := parser.ParseExpr(expr)
 	if err != nil {
 		return 0, err
 	}
 
-	v, _ := constant.Float64Val(tv.Value)
+	return evalAst(root, params, opts)
+}
 
-	return v, nil
+func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64, error) {
+	switch e := node.(type) {
+	case *ast.BinaryExpr:
+		x, err := evalAst(e.X, params, opts)
+		if err != nil {
+			return 0, err
+		}
+		y, err := evalAst(e.Y, params, opts)
+		if err != nil {
+			return 0, err
+		}
+		switch e.Op {
+		case token.ADD:
+			return x + y, nil
+		case token.SUB:
+			return x - y, nil
+		case token.MUL:
+			return x * y, nil
+		case token.QUO:
+			return x / y, nil
+		case token.REM:
+			return float64(int64(x) % int64(y)), nil
+		default:
+			return 0, fmt.Errorf("Unsupported operator: %s", e.Op.String())
+		}
+	case *ast.UnaryExpr:
+		x, err := evalAst(e.X, params, opts)
+		if err != nil {
+			return 0, err
+		}
+		switch e.Op {
+		case token.SUB:
+			return -x, nil
+		default:
+			return 0, fmt.Errorf("Unsupported operator: %s", e.Op.String())
+		}
+	case *ast.BasicLit:
+		switch e.Kind {
+		case token.FLOAT, token.INT:
+			return strconv.ParseFloat(e.Value, 64)
+		default:
+			return 0, fmt.Errorf("Unsupported literal: %s", e.Value)
+		}
+	case *ast.Ident:
+		name := e.Name
+		name = strings.ReplaceAll(name, "V_loop_", "V_loop.")
+		name = strings.ReplaceAll(name, "V_", "$")
+		switch name {
+		case "$rand":
+			return opts.Random.Float64(), nil
+		case "$rank":
+			return opts.Rank, nil
+		default:
+			if v, exists := params[name]; exists {
+				return v, nil
+			} else {
+				return 0, fmt.Errorf("Invalid variable name: %s", e.Name)
+			}
+		}
+	case *ast.CallExpr:
+		f, ok := e.Fun.(*ast.Ident)
+		if !ok {
+			var buf bytes.Buffer
+			if err := format.Node(&buf, token.NewFileSet(), e.Fun); err != nil {
+				return 0, err
+			}
+			return 0, fmt.Errorf("Unsupported function: %s", string(buf.Bytes()))
+		}
+
+		var args []float64
+		for _, arg := range e.Args {
+			v, err := evalAst(arg, params, opts)
+			if err != nil {
+				return 0, err
+			}
+			args = append(args, v)
+		}
+
+		switch f.Name {
+		case "sin":
+			if len(args) < 1 {
+				return 0, fmt.Errorf("Too few arguments for sin(): %d", len(args))
+			}
+			return math.Sin(args[0]), nil
+		case "cos":
+			if len(args) < 1 {
+				return 0, fmt.Errorf("Too few arguments for cos(): %d", len(args))
+			}
+			return math.Cos(args[0]), nil
+		default:
+			return 0, fmt.Errorf("Unsupported function: %s", f.Name)
+		}
+	default:
+		var buf bytes.Buffer
+		if err := format.Node(&buf, token.NewFileSet(), node); err != nil {
+			return 0, err
+		}
+		return 0, fmt.Errorf("Unsupported expression: %s", string(buf.Bytes()))
+	}
 }
 
 func normalizeDir(dir float64) float64 {
