@@ -1,11 +1,10 @@
 <?xml version="1.0" ?>
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
-    <action label="main">
+    <action label="shoot">
         <fire>
             <direction type="sequence">$1 * 3</direction>
             <bullet>
-                <direction type="absolute">$2</direction>
                 <action>
                     <wait>600</wait>
                     <vanish />
@@ -15,21 +14,27 @@
         <wait>5</wait>
     </action>
     <action label="wave">
+        <fire>
+            <direction type="absolute">$1</direction>
+            <bullet>
+                <action>
+                    <vanish />
+                </action>
+            </bullet>
+        </fire>
         <repeat>
             <times>999</times>
             <action>
                 <repeat>
                     <times>30</times>
-                    <actionRef label="main">
+                    <actionRef label="shoot">
                         <param>1</param>
-                        <param>$1</param>
                     </actionRef>
                 </repeat>
                 <repeat>
                     <times>30</times>
-                    <actionRef label="main">
+                    <actionRef label="shoot">
                         <param>-1</param>
-                        <param>$1</param>
                     </actionRef>
                 </repeat>
             </action>

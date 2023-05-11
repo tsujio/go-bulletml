@@ -43,8 +43,14 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 	}
 
 	runner := &runner{
-		bulletML:       bulletML,
-		opts:           &_opts,
+		bulletML: bulletML,
+		opts:     &_opts,
+		bullet:   &bulletModel{},
+		updateBulletPosition: func(r *runner) {
+			x, y := r.opts.CurrentShootPosition()
+			r.bullet.x = x
+			r.bullet.y = y
+		},
 		actionDefTable: make(map[string]*Action),
 		fireDefTable:   make(map[string]*Fire),
 		bulletDefTable: make(map[string]*Bullet),
@@ -71,6 +77,8 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 		}
 	}
 
+	runner.updateBulletPosition(runner)
+
 	return runner, nil
 }
 
@@ -83,13 +91,14 @@ type bulletModel struct {
 }
 
 type runner struct {
-	bulletML        *BulletML
-	opts            *NewRunnerOptions
-	bullet          *bulletModel
-	actionProcesses []*actionProcess
-	actionDefTable  map[string]*Action
-	fireDefTable    map[string]*Fire
-	bulletDefTable  map[string]*Bullet
+	bulletML             *BulletML
+	opts                 *NewRunnerOptions
+	bullet               *bulletModel
+	updateBulletPosition func(*runner)
+	actionProcesses      []*actionProcess
+	actionDefTable       map[string]*Action
+	fireDefTable         map[string]*Fire
+	bulletDefTable       map[string]*Bullet
 }
 
 func (r *runner) createActionProcess(action *Action, params []float64) *actionProcess {
@@ -99,6 +108,7 @@ func (r *runner) createActionProcess(action *Action, params []float64) *actionPr
 		changeSpeedUntil:     -1,
 		changeDirectionUntil: -1,
 		accelUntil:           -1,
+		lastShoot:            &bulletModel{},
 	}
 
 	if action != nil {
@@ -125,12 +135,7 @@ func (r *runner) Update() error {
 
 	r.actionProcesses = newActionProcesses
 
-	if r.bullet != nil && !r.bullet.vanished {
-		r.bullet.x += r.bullet.speed * math.Cos(r.bullet.direction)
-		r.bullet.y += r.bullet.speed * math.Sin(r.bullet.direction)
-		r.bullet.x += r.bullet.accelSpeedHorizontal
-		r.bullet.y += r.bullet.accelSpeedVertical
-	}
+	r.updateBulletPosition(r)
 
 	return nil
 }
@@ -264,17 +269,69 @@ func (f *actionProcessFrame) update() error {
 			}
 			bulletParams := params
 
-			sx, sy := f.actionProcess.runner.opts.CurrentShootPosition()
+			sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
 			tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
 
-			dir, err := calculateDirection(fire.Direction, sx, sy, tx, ty, bullet.Direction, f.actionProcess.lastShoot, fireParams, bulletParams, f.actionProcess.runner.opts)
-			if err != nil {
-				return err
+			var dir float64
+			d := fire.Direction
+			if d != nil {
+				dir, err = evaluateExpr(d.Expr, fireParams, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+			} else if d = bullet.Direction; d != nil {
+				dir, err = evaluateExpr(d.Expr, bulletParams, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
 			}
 
-			speed, err := calculateSpeed(fire.Speed, bullet.Speed, f.actionProcess.lastShoot, fireParams, bulletParams, f.actionProcess.runner.opts)
-			if err != nil {
-				return err
+			if d != nil {
+				dir = dir * math.Pi / 180
+
+				switch d.Type {
+				case DirectionTypeAim:
+					dir += math.Atan2(ty-sy, tx-sx)
+				case DirectionTypeAbsolute:
+					dir -= math.Pi / 2
+				case DirectionTypeRelative:
+					dir += f.actionProcess.runner.bullet.direction
+				case DirectionTypeSequence:
+					dir += f.actionProcess.lastShoot.direction
+				default:
+					return fmt.Errorf("Invalid type '%s' for <direction> element", d.Type)
+				}
+			} else {
+				dir = math.Atan2(ty-sy, tx-sx)
+			}
+
+			var speed float64
+			s := fire.Speed
+			if s != nil {
+				speed, err = evaluateExpr(s.Expr, fireParams, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+			} else if s = bullet.Speed; s != nil {
+				speed, err = evaluateExpr(s.Expr, bulletParams, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+			}
+
+			if s != nil {
+				switch s.Type {
+				case SpeedTypeAbsolute:
+					// Do nothing
+				case SpeedTypeRelative:
+					speed += f.actionProcess.runner.bullet.speed
+				case SpeedTypeSequence:
+					speed += f.actionProcess.lastShoot.speed
+				default:
+					return fmt.Errorf("Invalid type '%s' for <speed> element", s.Type)
+				}
+			} else {
+				speed = f.actionProcess.runner.opts.DefaultBulletSpeed
 			}
 
 			bulletRunner := &runner{
@@ -286,10 +343,19 @@ func (f *actionProcessFrame) update() error {
 					speed:     speed,
 					direction: dir,
 				},
+				updateBulletPosition: func(r *runner) {
+					if !r.bullet.vanished {
+						r.bullet.x += r.bullet.speed * math.Cos(r.bullet.direction)
+						r.bullet.y += r.bullet.speed * math.Sin(r.bullet.direction)
+						r.bullet.x += r.bullet.accelSpeedHorizontal
+						r.bullet.y += r.bullet.accelSpeedVertical
+					}
+				},
 				actionDefTable: f.actionProcess.runner.actionDefTable,
 				fireDefTable:   f.actionProcess.runner.fireDefTable,
 				bulletDefTable: f.actionProcess.runner.bulletDefTable,
 			}
+
 			p := bulletRunner.createActionProcess(nil, nil)
 			for i := len(bullet.Contents) - 1; i >= 0; i-- {
 				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.Contents[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
@@ -310,38 +376,61 @@ func (f *actionProcessFrame) update() error {
 				return err
 			}
 
-			baseSpeed := &Speed{
-				Type: SpeedTypeAbsolute,
-				Expr: fmt.Sprintf("%f", f.actionProcess.runner.bullet.speed),
-			}
-			speed, err := calculateSpeed(&c.Speed, baseSpeed, nil, f.params, nil, f.actionProcess.runner.opts)
+			speed, err := evaluateExpr(c.Speed.Expr, f.params, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
+			switch c.Speed.Type {
+			case SpeedTypeAbsolute, SpeedTypeRelative:
+				if c.Speed.Type == SpeedTypeRelative {
+					speed += f.actionProcess.runner.bullet.speed
+				}
+				f.actionProcess.changeSpeedDelta = (speed - f.actionProcess.runner.bullet.speed) / term
+				f.actionProcess.changeSpeedTarget = speed
+			case SpeedTypeSequence:
+				f.actionProcess.changeSpeedDelta = speed
+				f.actionProcess.changeSpeedTarget = speed*term + f.actionProcess.runner.bullet.speed
+			default:
+				return fmt.Errorf("Invalid type '%s' for <speed> element", c.Speed.Type)
+			}
+
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
-			f.actionProcess.changeSpeedDelta = (speed - f.actionProcess.runner.bullet.speed) / term
-			f.actionProcess.changeSpeedTarget = speed
 		case ChangeDirection:
 			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
-			tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
-			baseDir := &Direction{
-				Type: DirectionTypeAbsolute,
-				Expr: fmt.Sprintf("%f", f.actionProcess.runner.bullet.direction*180/math.Pi+90),
-			}
-			dir, err := calculateDirection(&c.Direction, sx, sy, tx, ty, baseDir, nil, f.params, nil, f.actionProcess.runner.opts)
+			dir, err := evaluateExpr(c.Direction.Expr, f.params, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
+			dir = dir * math.Pi / 180
+
+			switch c.Direction.Type {
+			case DirectionTypeAbsolute, DirectionTypeAim, DirectionTypeRelative:
+				if c.Direction.Type == DirectionTypeAbsolute {
+					dir -= math.Pi / 2
+				} else if c.Direction.Type == DirectionTypeAim {
+					sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
+					tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
+					dir += math.Atan2(ty-sy, tx-sx)
+				} else if c.Direction.Type == DirectionTypeRelative {
+					dir += f.actionProcess.runner.bullet.direction
+				}
+
+				f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / term
+				f.actionProcess.changeDirectionTarget = normalizeDir(dir)
+			case DirectionTypeSequence:
+				f.actionProcess.changeDirectionDelta = normalizeDir(dir)
+				f.actionProcess.changeDirectionTarget = normalizeDir(dir*term + f.actionProcess.runner.bullet.direction)
+			default:
+				return fmt.Errorf("Invalid type '%s' for <direction> element", c.Direction.Type)
+			}
+
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
-			f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / term
-			f.actionProcess.changeDirectionTarget = normalizeDir(dir)
 		case Accel:
 			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
 			if err != nil {
@@ -450,80 +539,6 @@ func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params
 		return t, refParams, nil
 	} else {
 		return nil, nil, fmt.Errorf("Invalid type: %T", typeOrRef)
-	}
-}
-
-func calculateDirection(dir *Direction, sx, sy float64, tx, ty float64, baseDir *Direction, lastShoot *bulletModel, dirParams, baseDirParams []float64, opts *NewRunnerOptions) (float64, error) {
-	if dir == nil {
-		if baseDir != nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, lastShoot, baseDirParams, nil, opts)
-		} else {
-			return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
-		}
-	}
-
-	val, err := evaluateExpr(dir.Expr, dirParams, opts)
-	if err != nil {
-		return 0, err
-	}
-
-	switch dir.Type {
-	case DirectionTypeAim:
-		d := math.Atan2(float64(ty-sy), float64(tx-sx))
-		d += val * math.Pi / 180
-		return d, nil
-	case DirectionTypeAbsolute:
-		return val*math.Pi/180 - math.Pi/2, nil
-	case DirectionTypeRelative:
-		d, err := calculateDirection(baseDir, sx, sy, tx, ty, nil, lastShoot, baseDirParams, nil, opts)
-		if err != nil {
-			return 0, err
-		}
-		d += val * math.Pi / 180
-		return d, nil
-	case DirectionTypeSequence:
-		if lastShoot == nil {
-			return calculateDirection(baseDir, sx, sy, tx, ty, nil, lastShoot, baseDirParams, nil, opts)
-		} else {
-			return lastShoot.direction + val*math.Pi/180, nil
-		}
-	default:
-		return math.Atan2(float64(ty-sy), float64(tx-sx)), nil
-	}
-}
-
-func calculateSpeed(speed *Speed, baseSpeed *Speed, lastShoot *bulletModel, params, baseParams []float64, opts *NewRunnerOptions) (float64, error) {
-	if speed == nil {
-		if baseSpeed != nil {
-			return calculateSpeed(baseSpeed, nil, lastShoot, baseParams, nil, opts)
-		} else {
-			return opts.DefaultBulletSpeed, nil
-		}
-	}
-
-	val, err := evaluateExpr(speed.Expr, params, opts)
-	if err != nil {
-		return 0, err
-	}
-
-	switch speed.Type {
-	case SpeedTypeAbsolute:
-		return val, nil
-	case SpeedTypeRelative:
-		s, err := calculateSpeed(baseSpeed, nil, lastShoot, baseParams, nil, opts)
-		if err != nil {
-			return 0, err
-		}
-		s += val
-		return s, nil
-	case SpeedTypeSequence:
-		if lastShoot == nil {
-			return calculateSpeed(baseSpeed, nil, lastShoot, baseParams, nil, opts)
-		} else {
-			return lastShoot.speed + val, nil
-		}
-	default:
-		return opts.DefaultBulletSpeed, nil
 	}
 }
 

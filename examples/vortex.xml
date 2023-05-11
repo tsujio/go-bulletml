@@ -2,13 +2,20 @@
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
     <action label="base">
+        <fire>
+            <direction type="absolute">$1</direction>
+            <bullet>
+                <action>
+                    <vanish />
+                </action>
+            </bullet>
+        </fire>
         <repeat>
             <times>999</times>
             <action>
                 <fire>
                     <direction type="sequence">-5</direction>
                     <bullet>
-                        <direction type="absolute">$1</direction>
                         <action>
                             <wait>600</wait>
                             <vanish />

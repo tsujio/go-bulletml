@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
-    <action label="main">
+    <action label="round">
         <repeat>
             <times>2</times>
             <action>
@@ -32,7 +32,7 @@
                     <direction type="absolute">180</direction>
                     <speed type="absolute">3</speed>
                     <bullet>
-                        <actionRef label="main">
+                        <actionRef label="round">
                             <param>10 + $rand * 120</param>
                         </actionRef>
                     </bullet>
