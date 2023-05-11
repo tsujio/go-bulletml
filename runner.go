@@ -320,7 +320,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
-			f.actionProcess.changeSpeedDelta = (speed - f.actionProcess.runner.bullet.speed) / (term + 1)
+			f.actionProcess.changeSpeedDelta = (speed - f.actionProcess.runner.bullet.speed) / term
 			f.actionProcess.changeSpeedTarget = speed
 		case ChangeDirection:
 			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
@@ -340,7 +340,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
-			f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / (term + 1)
+			f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / term
 			f.actionProcess.changeDirectionTarget = normalizeDir(dir)
 		case Accel:
 			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
@@ -357,12 +357,15 @@ func (f *actionProcessFrame) update() error {
 				}
 
 				switch c.Horizontal.Type {
-				case HorizontalTypeAbsolute, HorizontalTypeSequence:
-					f.actionProcess.accelHorizontalDelta = (horizontal - f.actionProcess.runner.bullet.accelSpeedHorizontal) / (term + 1)
+				case HorizontalTypeAbsolute, HorizontalTypeRelative:
+					if c.Horizontal.Type == HorizontalTypeRelative {
+						horizontal += f.actionProcess.runner.bullet.accelSpeedHorizontal
+					}
+					f.actionProcess.accelHorizontalDelta = (horizontal - f.actionProcess.runner.bullet.accelSpeedHorizontal) / term
 					f.actionProcess.accelHorizontalTarget = horizontal
-				case HorizontalTypeRelative:
+				case HorizontalTypeSequence:
 					f.actionProcess.accelHorizontalDelta = horizontal
-					f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal + horizontal*(term+1)
+					f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal + horizontal*term
 				default:
 					return fmt.Errorf("Invalid type '%s' for <horizontal> element", string(c.Horizontal.Type))
 				}
@@ -378,12 +381,15 @@ func (f *actionProcessFrame) update() error {
 				}
 
 				switch c.Vertical.Type {
-				case VerticalTypeAbsolute, VerticalTypeSequence:
-					f.actionProcess.accelVerticalDelta = (vertical - f.actionProcess.runner.bullet.accelSpeedVertical) / (term + 1)
+				case VerticalTypeAbsolute, VerticalTypeRelative:
+					if c.Vertical.Type == VerticalTypeRelative {
+						vertical += f.actionProcess.runner.bullet.accelSpeedVertical
+					}
+					f.actionProcess.accelVerticalDelta = (vertical - f.actionProcess.runner.bullet.accelSpeedVertical) / term
 					f.actionProcess.accelVerticalTarget = vertical
-				case VerticalTypeRelative:
+				case VerticalTypeSequence:
 					f.actionProcess.accelVerticalDelta = vertical
-					f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical + vertical*(term+1)
+					f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical + vertical*term
 				default:
 					return fmt.Errorf("Invalid type '%s' for <vertical> element", string(c.Vertical.Type))
 				}

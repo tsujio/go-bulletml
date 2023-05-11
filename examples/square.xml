@@ -7,21 +7,21 @@
             <action>
                 <fire>
                     <direction type="absolute">180</direction>
-                    <speed type="absolute">2</speed>
+                    <speed type="absolute">3</speed>
                     <bullet>
                         <action>
-                            <wait>120</wait>
+                            <wait>60</wait>
                             <changeSpeed>
-                                <term>0</term>
+                                <term>1</term>
                                 <speed type="absolute">0</speed>
                             </changeSpeed>
                             <accel>
                                 <term>60</term>
                                 <horizontal type="absolute">1 + 1.5 * $rand</horizontal>
                             </accel>
-                            <wait>60</wait>
+                            <wait>59</wait>
                             <accel>
-                                <term>0</term>
+                                <term>1</term>
                                 <horizontal type="absolute">0</horizontal>
                             </accel>
                             <wait>0</wait>
@@ -32,9 +32,9 @@
                                         <term>60</term>
                                         <vertical type="absolute">-2 - 3 * $rand</vertical>
                                     </accel>
-                                    <wait>60</wait>
+                                    <wait>59</wait>
                                     <accel>
-                                        <term>0</term>
+                                        <term>1</term>
                                         <vertical type="absolute">0</vertical>
                                     </accel>
                                     <wait>0</wait>
@@ -42,9 +42,9 @@
                                         <term>60</term>
                                         <horizontal type="absolute">-2 - 3 * $rand</horizontal>
                                     </accel>
-                                    <wait>60</wait>
+                                    <wait>59</wait>
                                     <accel>
-                                        <term>0</term>
+                                        <term>1</term>
                                         <horizontal type="absolute">0</horizontal>
                                     </accel>
                                     <wait>0</wait>
@@ -52,9 +52,9 @@
                                         <term>60</term>
                                         <vertical type="absolute">2 + 3 * $rand</vertical>
                                     </accel>
-                                    <wait>60</wait>
+                                    <wait>59</wait>
                                     <accel>
-                                        <term>0</term>
+                                        <term>1</term>
                                         <vertical type="absolute">0</vertical>
                                     </accel>
                                     <wait>0</wait>
@@ -62,9 +62,9 @@
                                         <term>60</term>
                                         <horizontal type="absolute">2 + 3 * $rand</horizontal>
                                     </accel>
-                                    <wait>60</wait>
+                                    <wait>59</wait>
                                     <accel>
-                                        <term>0</term>
+                                        <term>1</term>
                                         <horizontal type="absolute">0</horizontal>
                                     </accel>
                                     <wait>0</wait>

@@ -6,20 +6,20 @@
             <times>2</times>
             <action>
                 <changeDirection>
-                    <term>3.14 * $1 / 4 - 1</term>
+                    <term>3.14 * $1 / 4</term>
                     <direction type="relative">-90</direction>
                 </changeDirection>
-                <wait>3.14 * $1 / 4 - 1</wait>
+                <wait>3.14 * $1 / 4</wait>
             </action>
         </repeat>
         <repeat>
             <times>999</times>
             <action>
                 <changeDirection>
-                    <term>3.14 * $1 / 2 - 1</term>
+                    <term>3.14 * $1 / 2</term>
                     <direction type="relative">-90</direction>
                 </changeDirection>
-                <wait>3.14 * $1 / 2 - 1</wait>
+                <wait>3.14 * $1 / 2</wait>
             </action>
         </repeat>
         <vanish />
