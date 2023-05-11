@@ -552,37 +552,48 @@ func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params
 }
 
 var (
-	variableRegexp = regexp.MustCompile(`\$\d+`)
-	randomRegexp   = regexp.MustCompile(`\$rand`)
-	rankRegexp     = regexp.MustCompile(`\$rank`)
+	variableRegexp = regexp.MustCompile(`\$(\d+|rand|rank|loop\.index)`)
+	funcRegexp     = regexp.MustCompile(`(sin|cos)\([^\)]+\)`)
 )
 
 func evaluateExpr(expr string, params parameters, opts *NewRunnerOptions) (float64, error) {
-	expr = strings.ReplaceAll(expr, "$", "V_")
+	expr = variableRegexp.ReplaceAllStringFunc(expr, func(m string) string {
+		switch m {
+		case "$rand":
+			return fmt.Sprintf("%f", opts.Random.Float64())
+		case "$rank":
+			return fmt.Sprintf("%f", opts.Rank)
+		default:
+			if v, exists := params[m]; exists {
+				return fmt.Sprintf("%f", v)
+			} else {
+				return ""
+			}
+		}
+	})
 
-	pkg := types.NewPackage("main", "main")
+	expr = funcRegexp.ReplaceAllStringFunc(expr, func(m string) string {
+		idx := strings.Index(m, "(")
+		argExpr := m[idx+1 : len(m)-1]
+		tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, argExpr)
+		if err != nil {
+			return ""
+		}
+		arg, _ := constant.Float64Val(tv.Value)
 
-	for k, v := range params {
-		k = strings.ReplaceAll(k, "$", "V_")
-		pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, k, types.Typ[types.Float64], constant.MakeFloat64(v)))
-	}
+		switch m[:idx] {
+		case "sin":
+			return fmt.Sprintf("%f", math.Sin(arg))
+		case "cos":
+			return fmt.Sprintf("%f", math.Cos(arg))
+		default:
+			return ""
+		}
+	})
 
-	pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_rand", types.Typ[types.Float64], constant.MakeFloat64(opts.Random.Float64())))
-
-	pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_rank", types.Typ[types.Float64], constant.MakeFloat64(opts.Rank)))
-
-	if index, exists := params["$loop.index"]; exists {
-		expr = strings.ReplaceAll(expr, "V_loop.index", "V_loop_index")
-		pkg.Scope().Insert(types.NewConst(token.NoPos, pkg, "V_loop_index", types.Typ[types.Float64], constant.MakeFloat64(index)))
-	}
-
-	tv, err := types.Eval(token.NewFileSet(), pkg, token.NoPos, expr)
+	tv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
 		return 0, err
-	}
-
-	if !types.ConvertibleTo(tv.Type, types.Typ[types.Float64]) {
-		return 0, fmt.Errorf("Invalid type '%s' as result of expr", tv.Type.String())
 	}
 
 	v, _ := constant.Float64Val(tv.Value)

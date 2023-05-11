@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <fire label="fire">
+        <direction type="relative">60 * sin($1)</direction>
+        <bullet>
+            <action>
+                <wait>600</wait>
+                <vanish />
+            </action>
+        </bullet>
+    </fire>
+    <action label="top">
+        <changeDirection>
+            <term>1</term>
+            <direction type="absolute">180</direction>
+        </changeDirection>
+        <wait>1</wait>
+        <repeat>
+            <times>999</times>
+            <action>
+                <fireRef label="fire">
+                    <param>$loop.index / 10</param>
+                </fireRef>
+                <wait>10</wait>
+            </action>
+        </repeat>
+    </action>
+</bulletml>
