@@ -261,6 +261,42 @@ func main() {
 }
 ```
 
+# Extensions of BulletML Specifications
+
+This library contains some extended features of [BulletML specifications](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref_e.html).
+
+These features are not standard specifications, so BulletML sources which contain them would not work on other BulletML libraries.
+
+## Loop variables
+
+You can use loop variables in `<repeat>` elements.
+
+- `$loop.index`
+    - Zero-based loop index
+
+```
+<repeat>
+    <times>10</times>
+    <action>
+        <fire>
+            <speed>1 + $loop.index</speed>
+            <bullet />
+        </fire>
+    </action>
+</repeat>
+```
+
+## Math functions
+
+You can use these functions in expressions.
+
+- `sin`
+- `cos`
+
+```
+<direction>sin($loop.index / 10)</direction>
+```
+
 # References
 
 - [BulletML](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/index_e.html)
