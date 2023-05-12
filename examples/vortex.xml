@@ -1,69 +1,30 @@
 <?xml version="1.0" ?>
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
-    <action label="base">
-        <fire>
-            <direction type="absolute">$1</direction>
-            <bullet>
-                <action>
-                    <vanish />
-                </action>
-            </bullet>
-        </fire>
+    <action label="top">
         <repeat>
             <times>999</times>
             <action>
                 <fire>
                     <direction type="sequence">-5</direction>
-                    <bullet>
-                        <action>
-                            <wait>600</wait>
-                            <vanish />
-                        </action>
-                    </bullet>
+                    <bullet />
                 </fire>
+                <repeat>
+                    <times>7</times>
+                    <action>
+                        <fire>
+                            <direction type="sequence">45</direction>
+                            <bullet>
+                                <action>
+                                    <wait>600</wait>
+                                    <vanish />
+                                </action>
+                            </bullet>
+                        </fire>
+                    </action>
+                </repeat>
                 <wait>2</wait>
             </action>
         </repeat>
-    </action>
-    <action label="top-1">
-        <actionRef label="base">
-            <param>0</param>
-        </actionRef>
-    </action>
-    <action label="top-2">
-        <actionRef label="base">
-            <param>45</param>
-        </actionRef>
-    </action>
-    <action label="top-3">
-        <actionRef label="base">
-            <param>90</param>
-        </actionRef>
-    </action>
-    <action label="top-4">
-        <actionRef label="base">
-            <param>135</param>
-        </actionRef>
-    </action>
-    <action label="top-5">
-        <actionRef label="base">
-            <param>180</param>
-        </actionRef>
-    </action>
-    <action label="top-6">
-        <actionRef label="base">
-            <param>225</param>
-        </actionRef>
-    </action>
-    <action label="top-7">
-        <actionRef label="base">
-            <param>270</param>
-        </actionRef>
-    </action>
-    <action label="top-8">
-        <actionRef label="base">
-            <param>315</param>
-        </actionRef>
     </action>
 </bulletml>
