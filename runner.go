@@ -58,23 +58,27 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 		bulletDefTable: make(map[string]*Bullet),
 	}
 
-	for _, c := range bulletML.Contents {
-		switch cts := c.(type) {
-		case Action:
-			if cts.Label != "" {
-				runner.actionDefTable[cts.Label] = &cts
+	for _, b := range bulletML.Bullets {
+		if b.Label != "" {
+			bl := b
+			runner.bulletDefTable[b.Label] = &bl
+		}
+	}
 
-				if strings.HasPrefix(cts.Label, "top") {
-					runner.createActionProcess(&cts, nil)
-				}
-			}
-		case Fire:
-			if cts.Label != "" {
-				runner.fireDefTable[cts.Label] = &cts
-			}
-		case Bullet:
-			if cts.Label != "" {
-				runner.bulletDefTable[cts.Label] = &cts
+	for _, f := range bulletML.Fires {
+		if f.Label != "" {
+			fr := f
+			runner.fireDefTable[f.Label] = &fr
+		}
+	}
+
+	for _, a := range bulletML.Actions {
+		if a.Label != "" {
+			ac := a
+			runner.actionDefTable[a.Label] = &ac
+
+			if strings.HasPrefix(a.Label, "top") {
+				runner.createActionProcess(&ac, nil)
 			}
 		}
 	}
@@ -238,17 +242,26 @@ var (
 )
 
 func (f *actionProcessFrame) update() error {
-	for f.actionIndex < len(f.action.Contents) {
-		switch c := f.action.Contents[f.actionIndex].(type) {
+	for f.actionIndex < len(f.action.Commands) {
+		switch c := f.action.Commands[f.actionIndex].(type) {
 		case Repeat:
 			repeat, err := evaluateExpr(c.Times.Expr, f.params, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			action, params, err := lookUpDefTable[Action, ActionRef](c.ActionOrRef, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
-			if err != nil {
-				return err
+			var action *Action
+			var params parameters
+			if c.Action != nil {
+				action = c.Action
+				params = f.params
+			} else if c.ActionRef != nil {
+				action, params, err = lookUpDefTable[Action, ActionRef](*c.ActionRef, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("No action in <%s> element", c.XMLName.Local)
 			}
 
 			prms := make(parameters)
@@ -274,9 +287,16 @@ func (f *actionProcessFrame) update() error {
 			}
 			fireParams := params
 
-			bullet, params, err := lookUpDefTable[Bullet, BulletRef](fire.BulletOrRef, f.actionProcess.runner.bulletDefTable, params, f.actionProcess.runner.opts)
-			if err != nil {
-				return err
+			var bullet *Bullet
+			if fire.Bullet != nil {
+				bullet = fire.Bullet
+			} else if fire.BulletRef != nil {
+				bullet, params, err = lookUpDefTable[Bullet, BulletRef](*fire.BulletRef, f.actionProcess.runner.bulletDefTable, params, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("No bullet in <%s> element", fire.XMLName.Local)
 			}
 			bulletParams := params
 
@@ -310,7 +330,7 @@ func (f *actionProcessFrame) update() error {
 				case DirectionTypeSequence:
 					dir += f.actionProcess.lastShoot.direction
 				default:
-					return fmt.Errorf("Invalid type '%s' for <direction> element", d.Type)
+					return fmt.Errorf("Invalid type '%s' for <%s> element", d.Type, d.XMLName.Local)
 				}
 			} else {
 				dir = math.Atan2(ty-sy, tx-sx)
@@ -339,7 +359,7 @@ func (f *actionProcessFrame) update() error {
 				case SpeedTypeSequence:
 					speed += f.actionProcess.lastShoot.speed
 				default:
-					return fmt.Errorf("Invalid type '%s' for <speed> element", s.Type)
+					return fmt.Errorf("Invalid type '%s' for <%s> element", s.Type, s.XMLName.Local)
 				}
 			} else {
 				speed = f.actionProcess.runner.opts.DefaultBulletSpeed
@@ -368,8 +388,8 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			p := bulletRunner.createActionProcess(nil, nil)
-			for i := len(bullet.Contents) - 1; i >= 0; i-- {
-				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.Contents[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
+			for i := len(bullet.ActionOrRefs) - 1; i >= 0; i-- {
+				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.ActionOrRefs[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -403,7 +423,7 @@ func (f *actionProcessFrame) update() error {
 				f.actionProcess.changeSpeedDelta = speed
 				f.actionProcess.changeSpeedTarget = speed*term + f.actionProcess.runner.bullet.speed
 			default:
-				return fmt.Errorf("Invalid type '%s' for <speed> element", c.Speed.Type)
+				return fmt.Errorf("Invalid type '%s' for <%s> element", c.Speed.Type, c.Speed.XMLName.Local)
 			}
 
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
@@ -438,7 +458,7 @@ func (f *actionProcessFrame) update() error {
 				f.actionProcess.changeDirectionDelta = normalizeDir(dir)
 				f.actionProcess.changeDirectionTarget = normalizeDir(dir*term + f.actionProcess.runner.bullet.direction)
 			default:
-				return fmt.Errorf("Invalid type '%s' for <direction> element", c.Direction.Type)
+				return fmt.Errorf("Invalid type '%s' for <%s> element", c.Direction.Type, c.Direction.XMLName.Local)
 			}
 
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
@@ -467,7 +487,7 @@ func (f *actionProcessFrame) update() error {
 					f.actionProcess.accelHorizontalDelta = horizontal
 					f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal + horizontal*term
 				default:
-					return fmt.Errorf("Invalid type '%s' for <horizontal> element", string(c.Horizontal.Type))
+					return fmt.Errorf("Invalid type '%s' for <%s> element", string(c.Horizontal.Type), c.Horizontal.XMLName.Local)
 				}
 			} else {
 				f.actionProcess.accelHorizontalDelta = 0
@@ -491,7 +511,7 @@ func (f *actionProcessFrame) update() error {
 					f.actionProcess.accelVerticalDelta = vertical
 					f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical + vertical*term
 				default:
-					return fmt.Errorf("Invalid type '%s' for <vertical> element", string(c.Vertical.Type))
+					return fmt.Errorf("Invalid type '%s' for <%s> element", string(c.Vertical.Type), c.Vertical.XMLName.Local)
 				}
 			} else {
 				f.actionProcess.accelVerticalDelta = 0
