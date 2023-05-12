@@ -10,7 +10,12 @@ A Go implementation of [BulletML](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/
 
 The BulletML specifications are [here](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref_e.html)
 
-**Important : go-bulletml and many BulletML libraries (and also the original) run top-level `<action>` elements that have `type` attribute and the value starts with `"top"` as entry points.**
+> **Important**
+> 
+> **go-bulletml and many BulletML libraries (and also the original) run top-level `<action>` elements that have `label` attribute and the value starts with `"top"` as entry points. For example:**
+> 
+> - `<action label="top">`
+> - `<action label="top-1">`
 
 ```xml
 <?xml version="1.0" ?>
@@ -229,7 +234,7 @@ func (g *Game) Update() error {
 
 var img = func() *ebiten.Image {
 	img := ebiten.NewImage(6, 6)
-	vector.DrawFilledCircle(img, 3, 3, 3, color.RGBA{0xE8, 0x7A, 0x90, 0xff}, true)
+	vector.DrawFilledCircle(img, 3, 3, 3, color.RGBA{0xe8, 0x7a, 0x90, 0xff}, true)
 	return img
 }()
 
@@ -276,7 +281,7 @@ You can use loop variables in `<repeat>` elements.
 - `$loop.index`
     - Zero-based loop index
 
-```
+```xml
 <repeat>
     <times>10</times>
     <action>
@@ -295,7 +300,7 @@ You can use these functions in expressions.
 - `sin`
 - `cos`
 
-```
+```xml
 <direction>sin($loop.index / 10)</direction>
 ```
 
