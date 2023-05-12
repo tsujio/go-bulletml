@@ -2,6 +2,8 @@
 
 A Go implementation of [BulletML](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/index_e.html)
 
+![Demo](https://github.com/tsujio/go-bulletml/blob/main/sample.gif?raw=true "Demo")
+
 # Usage
 
 ## 1. Write BulletML source
