@@ -8,7 +8,9 @@ A Go implementation of [BulletML](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/
 
 ## 1. Write BulletML source
 
-The BulletML specification is [here](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref_e.html)
+The BulletML specifications are [here](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref_e.html)
+
+**Important : go-bulletml and many BulletML libraries (and also the original) run top-level `<action>` elements that have `type` attribute and the value starts with `"top"` as entry points.**
 
 ```xml
 <?xml version="1.0" ?>
@@ -88,7 +90,7 @@ if err != nil {
 enemy.runner = runner
 ```
 
-## 4. Call runner's `Update` method in every loop
+## 4. Call runner's Update method in every loop
 
 ```golang
 if err := enemy.runner.Update(); err != nil {
