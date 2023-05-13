@@ -19,10 +19,52 @@ window.onload = () => {
       return
     }
 
-    textarea.addEventListener("keypress", e => {
+    textarea.addEventListener("keydown", e => {
       if (e.shiftKey && e.keyCode === 13) {
         e.preventDefault()
         iframe.contentWindow.setBulletML(e.currentTarget.value)
+      }
+
+      if (e.keyCode === 9) {
+        e.preventDefault()
+
+        const tab = "    "
+        let result = ""
+
+        if (e.currentTarget.selectionStart === e.currentTarget.selectionEnd && !e.shiftKey) {
+          const prefix = e.currentTarget.value.substring(0, e.currentTarget.selectionStart)
+          const suffix = e.currentTarget.value.substring(e.currentTarget.selectionStart)
+          result = prefix + tab + suffix
+        } else {
+          const targetIdx = e.currentTarget.value.substring(0, e.currentTarget.selectionStart).lastIndexOf("\n") + 1
+          const prefix = e.currentTarget.value.substring(0, targetIdx)
+          const suffixIdx = e.currentTarget.value.substring(e.currentTarget.selectionEnd).indexOf("\n")
+          const target = e.currentTarget.value.substring(targetIdx, suffixIdx ===  -1 ? Infinity : (e.currentTarget.selectionEnd + suffixIdx))
+          const suffix = e.currentTarget.value.substring(suffixIdx ===  -1 ? Infinity : (e.currentTarget.selectionEnd + suffixIdx))
+
+          result = prefix
+
+          if (e.shiftKey) {
+            result += target.replaceAll(/^ {1,4}/gm, "")
+          } else {
+            result += target.replaceAll(/^/gm, tab)
+          }
+
+          result += suffix
+        }
+
+        const end = e.currentTarget.selectionEnd
+        const origLen = e.currentTarget.value.length
+        const origLineN = (e.currentTarget.value.substring(0, e.currentTarget.selectionEnd).match(/\n/g) || []).length
+        e.currentTarget.value = result
+        e.currentTarget.selectionEnd = end + result.length - origLen
+        const newLineN = (e.currentTarget.value.substring(0, e.currentTarget.selectionEnd).match(/\n/g) || []).length
+        if (origLineN !== newLineN) {
+          const idx = e.currentTarget.value.substring(e.currentTarget.selectionEnd).indexOf("\n")
+          if (idx !== -1) {
+            e.currentTarget.selectionStart = e.currentTarget.selectionEnd += idx + 1
+          }
+        }
       }
     })
 
