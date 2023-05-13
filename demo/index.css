@@ -3,6 +3,11 @@ body {
     padding: 0;
 }
 
+a {
+    text-decoration: none;
+    color: dodgerblue;
+}
+
 .container {
     display: flex;
     width: 100%;
@@ -23,10 +28,55 @@ body {
 }
 
 .editor-container {
+    padding: 0 8px;
     flex-direction: column;
+    box-sizing: border-box;
+}
+
+.editor-header-container {
+    margin-top: 12px;
+}
+
+.editor-header-container h1 {
+    margin: 0;
+    padding: 0;
+    font-size: 24px;
+}
+
+.editor-menu-container {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+}
+
+.editor-menu-control-container {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+}
+
+.editor-menu-control-container > *:not(:first-child) {
+    margin-left: 8px;
+}
+
+#apply-button {
+    background: lightyellow;
+    padding: 4px 0px;
+    width: 72px;
+    border-radius: 4px;
+    border: 1px solid gray;
+}
+
+#sample-selector {
+    padding: 4px 0;
+    width: 128px;
+    border-radius: 4px;
+    border: 1px solid gray;
 }
 
 .editor-textarea-container {
+    margin-top: 12px;
     display: flex;
     flex-grow: 1;
 }
@@ -35,4 +85,20 @@ body {
     width: 100%;
     height: 100%;
     box-sizing: border-box;
+    resize: none;
+    background: lightyellow;
+    padding: 4px;
+    border-radius: 4px;
+    border: 1px solid gray;
+}
+
+.editor-footer-container {
+    margin: 12px 0;
+    display: flex;
+    justify-content: center;
+}
+
+.editor-footer-container > *:not(:first-of-type):before {
+    content: "|";
+    margin: 0 8px;
 }

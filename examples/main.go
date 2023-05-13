@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	screenWidth  = 640
-	screenHeight = 480
+	screenWidth  = 480
+	screenHeight = 640
 )
 
 type Player struct {

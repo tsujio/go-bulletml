@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8">
     <title>BulletML Simulator</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="stylesheet" href="./index.css" />
     <script src="./index.js"></script>
   </head>
@@ -12,13 +13,30 @@
         <iframe id="simulator-iframe" src="./simulator.html"></iframe>
       </div>
       <div class="editor-container">
-        <div class="editor-control-container">
-          <button id="apply-button">Apply</button>
+        <div class="editor-header-container">
+          <h1>BulletML Simulator</h1>
+        </div>
+        <div class="editor-menu-container">
+          <div class="editor-menu-link-container">
+            <span><a href="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref_e.html">Reference</a> (<a href="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref.html">日本語版</a>)</span>
+          </div>
+          <div class="editor-menu-control-container">
+            <button id="apply-button" title="Apply this code [shift-enter]">Apply</button>
+            <select id="sample-selector">
+              <option value="vortex">Vortex</option>
+              <option value="homing">Homing</option>
+            </select>
+          </div>
         </div>
         <div class="editor-textarea-container">
           <textarea id="bulletml-textarea"></textarea>
         </div>
-      </div>
+        <div class="editor-footer-container">
+          <span><a href="https://github.com/tsujio/go-bulletml">GitHub</a></span>
+          <span><a href="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/index_e.html">BulletML</a></span>
+          <span><a href="https://ebitengine.org/">Powered by Ebitengine</a></span>
+          <span>&copy; <a href="https://www.tsujio.org">辻尾研</a></span>
+        </div>
     </div>
   </body>
 </html>
