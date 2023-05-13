@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body {
+          display: flex;
+      }
+
+      #loading {
+          width: 100%;
+          text-align: center;
+          color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <script src="https://storage.googleapis.com/tsujio-game-serve/wasm_exec.js"></script>
+    <script>
+      window.onload = () => {
+        // Polyfill
+        if (!WebAssembly.instantiateStreaming) {
+          WebAssembly.instantiateStreaming = async (resp, importObject) => {
+            const source = await (await resp).arrayBuffer();
+            return await WebAssembly.instantiate(source, importObject);
+          };
+        }
+
+        const url = "https://storage.googleapis.com/tsujio-game-serve/bulletml-simulator.wasm.gz"
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch(url), go.importObject).then(result => {
+          document.querySelector("#loading").remove()
+
+          go.run(result.instance);
+        }).catch(e => {
+          console.error(e)
+          document.querySelector("#loading").textContent = "Error"
+        });
+      }
+    </script>
+
+    <p id="loading">Loading...</p>
+  </body>
+</html>
