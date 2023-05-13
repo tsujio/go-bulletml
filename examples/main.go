@@ -137,7 +137,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func (g *Game) initializeRunner() {
 	opts := &bulletml.NewRunnerOptions{
-		OnBulletFired: func(bulletRunner bulletml.BulletRunner) {
+		OnBulletFired: func(bulletRunner bulletml.BulletRunner, _ *bulletml.FireContext) {
 			x, y := bulletRunner.Position()
 			b := &bullet{
 				x:      x,

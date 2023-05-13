@@ -68,7 +68,7 @@ bullets := make([]*Bullet)
 
 opts := &bulletml.NewRunnerOptions{
 	// Called when new bullet fired
-	OnBulletFired: func(bulletRunner bulletml.BulletRunner) {
+	OnBulletFired: func(bulletRunner bulletml.BulletRunner, _ *bulletml.FireContext) {
 		b := &Bullet{
 			runner: bulletRunner,
 		}
@@ -170,7 +170,7 @@ func (g *Game) addEnemy(x, y float64) {
 	// Create BulletML runner option
 	opts := &bulletml.NewRunnerOptions{
 		// Called when new bullet fired
-		OnBulletFired: func(bulletRunner bulletml.BulletRunner) {
+		OnBulletFired: func(bulletRunner bulletml.BulletRunner, _ *bulletml.FireContext) {
 			b := &Bullet{
 				runner: bulletRunner,
 			}

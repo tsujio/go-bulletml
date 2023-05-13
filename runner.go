@@ -26,8 +26,10 @@ type BulletRunner interface {
 	Vanished() bool
 }
 
+type FireContext struct{}
+
 type NewRunnerOptions struct {
-	OnBulletFired         func(BulletRunner)
+	OnBulletFired         func(BulletRunner, *FireContext)
 	CurrentShootPosition  func() (float64, float64)
 	CurrentTargetPosition func() (float64, float64)
 	DefaultBulletSpeed    float64
@@ -397,7 +399,7 @@ func (f *actionProcessFrame) update() error {
 				p.pushStack(action, actionParams)
 			}
 
-			f.actionProcess.runner.opts.OnBulletFired(bulletRunner)
+			f.actionProcess.runner.opts.OnBulletFired(bulletRunner, &FireContext{})
 
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
