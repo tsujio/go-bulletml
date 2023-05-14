@@ -1,4 +1,4 @@
-module github.com/tsujio/go-bulletml/examples
+module github.com/tsujio/go-bulletml/simulator
 
 go 1.19
 
