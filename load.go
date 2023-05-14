@@ -22,7 +22,7 @@ func (e *bulletmlError) Error() string {
 	buf := fmt.Sprintf("<%s>", e.node.xmlName())
 	n := e.node.parent()
 	for n != nil {
-		buf += fmt.Sprintf(" -> <%s>", n.xmlName())
+		buf = fmt.Sprintf("<%s> => ", n.xmlName()) + buf
 		n = n.parent()
 	}
 
