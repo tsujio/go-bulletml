@@ -54,18 +54,31 @@ a {
     display: flex;
     flex-direction: row;
     justify-content: flex-end;
+    align-items: center;
 }
 
 .editor-menu-control-container > *:not(:first-child) {
     margin-left: 8px;
 }
 
-#apply-button {
-    background: lightyellow;
+#apply-button,
+#record-button {
     padding: 4px 0px;
     width: 72px;
     border-radius: 4px;
     border: 1px solid gray;
+}
+
+#apply-button {
+    background: lightyellow;
+}
+
+#record-button {
+    background: white;
+}
+
+#download-link {
+    display: none;
 }
 
 #sample-selector {
@@ -80,6 +93,7 @@ a {
     margin-top: 12px;
     background: pink;
     padding: 8px;
+    display: none;
 }
 
 .editor-textarea-container {

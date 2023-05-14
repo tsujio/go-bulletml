@@ -2,6 +2,8 @@ window.onload = () => {
   const iframe = document.querySelector("#simulator-iframe")
   const textarea = document.querySelector("#bulletml-textarea")
   const applyButton = document.querySelector("#apply-button")
+  const recordButton = document.querySelector("#record-button")
+  const downloadLink = document.querySelector("#download-link")
   const sampleSelector = document.querySelector("#sample-selector")
   const editorMessage = document.querySelector("#editor-message")
 
@@ -84,6 +86,38 @@ window.onload = () => {
     applyButton.addEventListener("click", () => {
       setEditorMessage("")
       iframe.contentWindow.setBulletML(textarea.value)
+    })
+
+    let recorder
+    recordButton.addEventListener("click", () => {
+      if (!recorder || recorder.state !== "recording") {
+        const canvas = iframe.contentWindow.document.querySelector("canvas")
+        const stream = canvas.captureStream()
+        recorder = new MediaRecorder(stream, {mimeType: "video/webm;codecs=vp9"})
+
+        recorder.addEventListener("dataavailable", e => {
+          const data = new Blob([e.data], {type: e.data.type})
+          url = URL.createObjectURL(data)
+          downloadLink.download = "bulletml-rec.webm"
+          downloadLink.href = url
+          downloadLink.style.display = "inline"
+        })
+
+        recorder.addEventListener("error", e => {
+          console.error(e)
+          setEditorMessage("Failed to record simulator.")
+        })
+
+        recorder.start()
+
+        downloadLink.style.display = "none"
+
+        recordButton.textContent = "Stop"
+      } else {
+        recorder.stop()
+
+        recordButton.textContent = "Record"
+      }
     })
 
     sampleSelector.addEventListener("change", e => {
