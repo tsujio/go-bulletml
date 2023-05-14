@@ -87,7 +87,7 @@ func (e *Enemy) update() error {
 	}
 
 	if err := e.runner.Update(); err != nil {
-		panic(err)
+		return err
 	}
 
 	if e.x < 0 {
@@ -143,17 +143,19 @@ type sample struct {
 }
 
 type Game struct {
-	samples []sample
-	index   int
-	player  *Player
-	enemies []*Enemy
-	bullets []*Bullet
+	samples       []sample
+	index         int
+	player        *Player
+	enemies       []*Enemy
+	bullets       []*Bullet
+	errorCallback func(error)
 }
 
 func (g *Game) appendSample(name string, source io.Reader) {
 	bml, err := bulletml.Load(source)
 	if err != nil {
-		panic(err)
+		g.notifyError(err)
+		return
 	}
 
 	s := sample{
@@ -169,32 +171,34 @@ func (g *Game) appendSample(name string, source io.Reader) {
 }
 
 func (g *Game) Update() error {
-	for _, k := range inpututil.AppendJustPressedKeys(nil) {
-		if k == ebiten.KeyArrowUp || k == ebiten.KeyArrowDown {
-			if k == ebiten.KeyArrowUp {
-				g.index = (g.index + 1) % len(g.samples)
-			} else {
-				g.index = (g.index + len(g.samples) - 1) % len(g.samples)
-			}
+	if len(g.samples) > 0 {
+		for _, k := range inpututil.AppendJustPressedKeys(nil) {
+			if k == ebiten.KeyArrowUp || k == ebiten.KeyArrowDown {
+				if k == ebiten.KeyArrowUp {
+					g.index = (g.index + 1) % len(g.samples)
+				} else {
+					g.index = (g.index + len(g.samples) - 1) % len(g.samples)
+				}
 
-			g.initializeRunner()
+				g.initializeRunner()
+			}
 		}
 	}
 
 	if err := g.player.update(); err != nil {
-		panic(err)
+		g.notifyError(err)
 	}
 
 	for _, e := range g.enemies {
 		if err := e.update(); err != nil {
-			panic(err)
+			g.notifyError(err)
 		}
 	}
 
 	_bullets := make([]*Bullet, 0, len(g.bullets))
 	for _, b := range g.bullets {
 		if err := b.update(); err != nil {
-			panic(err)
+			g.notifyError(err)
 		}
 
 		if !b.runner.Vanished() {
@@ -264,7 +268,7 @@ func (g *Game) initializeRunner() {
 
 	runner, err := bulletml.NewRunner(g.samples[g.index].bml, opts)
 	if err != nil {
-		panic(err)
+		g.notifyError(err)
 	}
 
 	enemy.runner = runner
@@ -272,6 +276,14 @@ func (g *Game) initializeRunner() {
 	g.enemies = []*Enemy{enemy}
 
 	g.bullets = nil
+}
+
+func (g *Game) notifyError(err error) {
+	if g.errorCallback != nil {
+		g.errorCallback(err)
+	} else {
+		panic(err)
+	}
 }
 
 var game *Game

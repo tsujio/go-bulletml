@@ -3,8 +3,16 @@ window.onload = () => {
   const textarea = document.querySelector("#bulletml-textarea")
   const applyButton = document.querySelector("#apply-button")
   const sampleSelector = document.querySelector("#sample-selector")
+  const editorMessage = document.querySelector("#editor-message")
+
+  const setEditorMessage = message => {
+    editorMessage.textContent = message
+    editorMessage.style.display = message ? "block" : "none"
+  }
 
   const applySample = name => {
+    setEditorMessage("")
+
     fetch(`./${name}.xml`)
       .then(r => r.text())
       .then(d => {
@@ -14,14 +22,19 @@ window.onload = () => {
   }
 
   const main = () => {
-    if (!iframe.contentWindow.setBulletML) {
+    if (!iframe.contentWindow.setBulletML || !iframe.contentWindow.setErrorCallback) {
       setTimeout(main, 500)
       return
     }
 
+    iframe.contentWindow.setErrorCallback(err => {
+      setEditorMessage(err)
+    })
+
     textarea.addEventListener("keydown", e => {
       if (e.shiftKey && e.keyCode === 13) {
         e.preventDefault()
+        setEditorMessage("")
         iframe.contentWindow.setBulletML(e.currentTarget.value)
       }
 
@@ -69,6 +82,7 @@ window.onload = () => {
     })
 
     applyButton.addEventListener("click", () => {
+      setEditorMessage("")
       iframe.contentWindow.setBulletML(textarea.value)
     })
 
