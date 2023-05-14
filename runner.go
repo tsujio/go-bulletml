@@ -247,7 +247,7 @@ func (f *actionProcessFrame) update() error {
 	for f.actionIndex < len(f.action.Commands) {
 		switch c := f.action.Commands[f.actionIndex].(type) {
 		case Repeat:
-			repeat, err := evaluateExpr(c.Times.Expr, f.params, f.actionProcess.runner.opts)
+			repeat, err := evaluateExpr(c.Times.Expr, f.params, &c.Times, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
@@ -258,12 +258,12 @@ func (f *actionProcessFrame) update() error {
 				action = c.Action
 				params = f.params
 			} else if c.ActionRef != nil {
-				action, params, err = lookUpDefTable[Action, ActionRef](*c.ActionRef, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
+				action, params, err = lookUpActionDefTable(c.ActionRef, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
 			} else {
-				return fmt.Errorf("No action in <%s> element", c.XMLName.Local)
+				return newBulletmlError(fmt.Sprintf("No action in <%s> element", c.XMLName.Local), &c)
 			}
 
 			prms := make(parameters)
@@ -283,9 +283,17 @@ func (f *actionProcessFrame) update() error {
 				f.repeatIndex = 0
 			}
 		case Fire, FireRef:
-			fire, params, err := lookUpDefTable[Fire, FireRef](c, f.actionProcess.runner.fireDefTable, f.params, f.actionProcess.runner.opts)
-			if err != nil {
-				return err
+			var err error
+			var fire *Fire
+			var params parameters
+			if fr, ok := c.(Fire); ok {
+				fire = &fr
+				params = f.params
+			} else if r, ok := c.(FireRef); ok {
+				fire, params, err = lookUpFireDefTable(&r, f.actionProcess.runner.fireDefTable, f.params, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
 			}
 			fireParams := params
 
@@ -293,12 +301,12 @@ func (f *actionProcessFrame) update() error {
 			if fire.Bullet != nil {
 				bullet = fire.Bullet
 			} else if fire.BulletRef != nil {
-				bullet, params, err = lookUpDefTable[Bullet, BulletRef](*fire.BulletRef, f.actionProcess.runner.bulletDefTable, params, f.actionProcess.runner.opts)
+				bullet, params, err = lookUpBulletDefTable(fire.BulletRef, f.actionProcess.runner.bulletDefTable, params, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
 			} else {
-				return fmt.Errorf("No bullet in <%s> element", fire.XMLName.Local)
+				return newBulletmlError(fmt.Sprintf("No bullet in <%s> element", fire.XMLName.Local), fire)
 			}
 			bulletParams := params
 
@@ -308,12 +316,12 @@ func (f *actionProcessFrame) update() error {
 			var dir float64
 			d := fire.Direction
 			if d != nil {
-				dir, err = evaluateExpr(d.Expr, fireParams, f.actionProcess.runner.opts)
+				dir, err = evaluateExpr(d.Expr, fireParams, d, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
 			} else if d = bullet.Direction; d != nil {
-				dir, err = evaluateExpr(d.Expr, bulletParams, f.actionProcess.runner.opts)
+				dir, err = evaluateExpr(d.Expr, bulletParams, d, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -332,7 +340,7 @@ func (f *actionProcessFrame) update() error {
 				case DirectionTypeSequence:
 					dir += f.actionProcess.lastShoot.direction
 				default:
-					return fmt.Errorf("Invalid type '%s' for <%s> element", d.Type, d.XMLName.Local)
+					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", d.Type, d.XMLName.Local), d)
 				}
 			} else {
 				dir = math.Atan2(ty-sy, tx-sx)
@@ -341,12 +349,12 @@ func (f *actionProcessFrame) update() error {
 			var speed float64
 			s := fire.Speed
 			if s != nil {
-				speed, err = evaluateExpr(s.Expr, fireParams, f.actionProcess.runner.opts)
+				speed, err = evaluateExpr(s.Expr, fireParams, s, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
 			} else if s = bullet.Speed; s != nil {
-				speed, err = evaluateExpr(s.Expr, bulletParams, f.actionProcess.runner.opts)
+				speed, err = evaluateExpr(s.Expr, bulletParams, s, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -361,7 +369,7 @@ func (f *actionProcessFrame) update() error {
 				case SpeedTypeSequence:
 					speed += f.actionProcess.lastShoot.speed
 				default:
-					return fmt.Errorf("Invalid type '%s' for <%s> element", s.Type, s.XMLName.Local)
+					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", s.Type, s.XMLName.Local), s)
 				}
 			} else {
 				speed = f.actionProcess.runner.opts.DefaultBulletSpeed
@@ -391,9 +399,19 @@ func (f *actionProcessFrame) update() error {
 
 			p := bulletRunner.createActionProcess(nil, nil)
 			for i := len(bullet.ActionOrRefs) - 1; i >= 0; i-- {
-				action, actionParams, err := lookUpDefTable[Action, ActionRef](bullet.ActionOrRefs[i], f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
-				if err != nil {
-					return err
+				var action *Action
+				var actionParams parameters
+				switch a := bullet.ActionOrRefs[i].(type) {
+				case Action:
+					action = &a
+					actionParams = params
+				case ActionRef:
+					action, actionParams, err = lookUpActionDefTable(&a, f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
+					if err != nil {
+						return err
+					}
+				default:
+					return newBulletmlError(fmt.Sprintf("Invalid child element of <%s>: %T", bullet.XMLName.Local, a), bullet)
 				}
 
 				p.pushStack(action, actionParams)
@@ -404,12 +422,12 @@ func (f *actionProcessFrame) update() error {
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
 		case ChangeSpeed:
-			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
+			term, err := evaluateExpr(c.Term.Expr, f.params, &c.Term, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			speed, err := evaluateExpr(c.Speed.Expr, f.params, f.actionProcess.runner.opts)
+			speed, err := evaluateExpr(c.Speed.Expr, f.params, &c.Speed, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
@@ -425,17 +443,17 @@ func (f *actionProcessFrame) update() error {
 				f.actionProcess.changeSpeedDelta = speed
 				f.actionProcess.changeSpeedTarget = speed*term + f.actionProcess.runner.bullet.speed
 			default:
-				return fmt.Errorf("Invalid type '%s' for <%s> element", c.Speed.Type, c.Speed.XMLName.Local)
+				return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", c.Speed.Type, c.Speed.XMLName.Local), &c.Speed)
 			}
 
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
 		case ChangeDirection:
-			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
+			term, err := evaluateExpr(c.Term.Expr, f.params, &c.Term, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
 
-			dir, err := evaluateExpr(c.Direction.Expr, f.params, f.actionProcess.runner.opts)
+			dir, err := evaluateExpr(c.Direction.Expr, f.params, &c.Direction, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
@@ -460,12 +478,12 @@ func (f *actionProcessFrame) update() error {
 				f.actionProcess.changeDirectionDelta = normalizeDir(dir)
 				f.actionProcess.changeDirectionTarget = normalizeDir(dir*term + f.actionProcess.runner.bullet.direction)
 			default:
-				return fmt.Errorf("Invalid type '%s' for <%s> element", c.Direction.Type, c.Direction.XMLName.Local)
+				return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", c.Direction.Type, c.Direction.XMLName.Local), &c.Direction)
 			}
 
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
 		case Accel:
-			term, err := evaluateExpr(c.Term.Expr, f.params, f.actionProcess.runner.opts)
+			term, err := evaluateExpr(c.Term.Expr, f.params, &c.Term, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
@@ -473,7 +491,7 @@ func (f *actionProcessFrame) update() error {
 			f.actionProcess.accelUntil = f.actionProcess.ticks + int(term)
 
 			if c.Horizontal != nil {
-				horizontal, err := evaluateExpr(c.Horizontal.Expr, f.params, f.actionProcess.runner.opts)
+				horizontal, err := evaluateExpr(c.Horizontal.Expr, f.params, c.Horizontal, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -489,7 +507,7 @@ func (f *actionProcessFrame) update() error {
 					f.actionProcess.accelHorizontalDelta = horizontal
 					f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal + horizontal*term
 				default:
-					return fmt.Errorf("Invalid type '%s' for <%s> element", string(c.Horizontal.Type), c.Horizontal.XMLName.Local)
+					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", string(c.Horizontal.Type), c.Horizontal.XMLName.Local), c.Horizontal)
 				}
 			} else {
 				f.actionProcess.accelHorizontalDelta = 0
@@ -497,7 +515,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			if c.Vertical != nil {
-				vertical, err := evaluateExpr(c.Vertical.Expr, f.params, f.actionProcess.runner.opts)
+				vertical, err := evaluateExpr(c.Vertical.Expr, f.params, c.Vertical, f.actionProcess.runner.opts)
 				if err != nil {
 					return err
 				}
@@ -513,14 +531,14 @@ func (f *actionProcessFrame) update() error {
 					f.actionProcess.accelVerticalDelta = vertical
 					f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical + vertical*term
 				default:
-					return fmt.Errorf("Invalid type '%s' for <%s> element", string(c.Vertical.Type), c.Vertical.XMLName.Local)
+					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", string(c.Vertical.Type), c.Vertical.XMLName.Local), c.Vertical)
 				}
 			} else {
 				f.actionProcess.accelVerticalDelta = 0
 				f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical
 			}
 		case Wait:
-			wait, err := evaluateExpr(c.Expr, f.params, f.actionProcess.runner.opts)
+			wait, err := evaluateExpr(c.Expr, f.params, &c, f.actionProcess.runner.opts)
 			if err != nil {
 				return err
 			}
@@ -533,9 +551,17 @@ func (f *actionProcessFrame) update() error {
 		case Vanish:
 			f.actionProcess.runner.bullet.vanished = true
 		case Action, ActionRef:
-			action, params, err := lookUpDefTable[Action, ActionRef](c, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
-			if err != nil {
-				return err
+			var action *Action
+			var params parameters
+			if a, ok := c.(Action); ok {
+				action = &a
+				params = f.params
+			} else if r, ok := c.(ActionRef); ok {
+				var err error
+				action, params, err = lookUpActionDefTable(&r, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
+				if err != nil {
+					return err
+				}
 			}
 
 			f.actionProcess.pushStack(action, params)
@@ -551,29 +577,61 @@ func (f *actionProcessFrame) update() error {
 	return actionProcessFrameEnd
 }
 
-func lookUpDefTable[T any, R refType](typeOrRef any, table map[string]*T, params parameters, opts *NewRunnerOptions) (*T, parameters, error) {
-	if t, ok := typeOrRef.(T); ok {
-		return &t, params, nil
-	} else if r, ok := typeOrRef.(R); ok {
-		t, exists := table[r.label()]
-		if !exists {
-			return nil, nil, fmt.Errorf("<%s label=\"%s\"> not found", r.xmlName(), r.label())
-		}
-
-		refParams := make(parameters)
-		for i, p := range r.params() {
-			v, err := evaluateExpr(p.Expr, params, opts)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			refParams[fmt.Sprintf("$%d", i+1)] = v
-		}
-
-		return t, refParams, nil
-	} else {
-		return nil, nil, fmt.Errorf("Invalid type: %T", typeOrRef)
+func lookUpBulletDefTable(ref *BulletRef, table map[string]*Bullet, params parameters, opts *NewRunnerOptions) (*Bullet, parameters, error) {
+	t, exists := table[ref.Label]
+	if !exists {
+		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.XMLName.Local, ref.Label), ref)
 	}
+
+	refParams := make(parameters)
+	for i, p := range ref.Params {
+		v, err := evaluateExpr(p.Expr, params, &p, opts)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		refParams[fmt.Sprintf("$%d", i+1)] = v
+	}
+
+	return t, refParams, nil
+}
+
+func lookUpActionDefTable(ref *ActionRef, table map[string]*Action, params parameters, opts *NewRunnerOptions) (*Action, parameters, error) {
+	t, exists := table[ref.Label]
+	if !exists {
+		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.XMLName.Local, ref.Label), ref)
+	}
+
+	refParams := make(parameters)
+	for i, p := range ref.Params {
+		v, err := evaluateExpr(p.Expr, params, &p, opts)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		refParams[fmt.Sprintf("$%d", i+1)] = v
+	}
+
+	return t, refParams, nil
+}
+
+func lookUpFireDefTable(ref *FireRef, table map[string]*Fire, params parameters, opts *NewRunnerOptions) (*Fire, parameters, error) {
+	t, exists := table[ref.Label]
+	if !exists {
+		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.XMLName.Local, ref.Label), ref)
+	}
+
+	refParams := make(parameters)
+	for i, p := range ref.Params {
+		v, err := evaluateExpr(p.Expr, params, &p, opts)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		refParams[fmt.Sprintf("$%d", i+1)] = v
+	}
+
+	return t, refParams, nil
 }
 
 var (
@@ -581,26 +639,26 @@ var (
 	funcRegexp     = regexp.MustCompile(`(sin|cos)\([^\)]+\)`)
 )
 
-func evaluateExpr(expr string, params parameters, opts *NewRunnerOptions) (float64, error) {
+func evaluateExpr(expr string, params parameters, node node, opts *NewRunnerOptions) (float64, error) {
 	expr = strings.ReplaceAll(expr, "$", "V_")
 	expr = strings.ReplaceAll(expr, "V_loop.", "V_loop_")
 
 	root, err := parser.ParseExpr(expr)
 	if err != nil {
-		return 0, err
+		return 0, newBulletmlError(err.Error(), node)
 	}
 
-	return evalAst(root, params, opts)
+	return evalAst(root, params, node, opts)
 }
 
-func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64, error) {
+func evalAst(node ast.Expr, params parameters, bmlNode node, opts *NewRunnerOptions) (float64, error) {
 	switch e := node.(type) {
 	case *ast.BinaryExpr:
-		x, err := evalAst(e.X, params, opts)
+		x, err := evalAst(e.X, params, bmlNode, opts)
 		if err != nil {
 			return 0, err
 		}
-		y, err := evalAst(e.Y, params, opts)
+		y, err := evalAst(e.Y, params, bmlNode, opts)
 		if err != nil {
 			return 0, err
 		}
@@ -616,10 +674,10 @@ func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64,
 		case token.REM:
 			return float64(int64(x) % int64(y)), nil
 		default:
-			return 0, fmt.Errorf("Unsupported operator: %s", e.Op.String())
+			return 0, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), bmlNode)
 		}
 	case *ast.UnaryExpr:
-		x, err := evalAst(e.X, params, opts)
+		x, err := evalAst(e.X, params, bmlNode, opts)
 		if err != nil {
 			return 0, err
 		}
@@ -627,14 +685,14 @@ func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64,
 		case token.SUB:
 			return -x, nil
 		default:
-			return 0, fmt.Errorf("Unsupported operator: %s", e.Op.String())
+			return 0, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), bmlNode)
 		}
 	case *ast.BasicLit:
 		switch e.Kind {
 		case token.FLOAT, token.INT:
 			return strconv.ParseFloat(e.Value, 64)
 		default:
-			return 0, fmt.Errorf("Unsupported literal: %s", e.Value)
+			return 0, newBulletmlError(fmt.Sprintf("Unsupported literal: %s", e.Value), bmlNode)
 		}
 	case *ast.Ident:
 		name := e.Name
@@ -649,7 +707,7 @@ func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64,
 			if v, exists := params[name]; exists {
 				return v, nil
 			} else {
-				return 0, fmt.Errorf("Invalid variable name: %s", e.Name)
+				return 0, newBulletmlError(fmt.Sprintf("Invalid variable name: %s", e.Name), bmlNode)
 			}
 		}
 	case *ast.CallExpr:
@@ -657,14 +715,14 @@ func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64,
 		if !ok {
 			var buf bytes.Buffer
 			if err := format.Node(&buf, token.NewFileSet(), e.Fun); err != nil {
-				return 0, err
+				return 0, newBulletmlError(err.Error(), bmlNode)
 			}
-			return 0, fmt.Errorf("Unsupported function: %s", string(buf.Bytes()))
+			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", string(buf.Bytes())), bmlNode)
 		}
 
 		var args []float64
 		for _, arg := range e.Args {
-			v, err := evalAst(arg, params, opts)
+			v, err := evalAst(arg, params, bmlNode, opts)
 			if err != nil {
 				return 0, err
 			}
@@ -674,23 +732,23 @@ func evalAst(node ast.Expr, params parameters, opts *NewRunnerOptions) (float64,
 		switch f.Name {
 		case "sin":
 			if len(args) < 1 {
-				return 0, fmt.Errorf("Too few arguments for sin(): %d", len(args))
+				return 0, newBulletmlError(fmt.Sprintf("Too few arguments for sin(): %d", len(args)), bmlNode)
 			}
 			return math.Sin(args[0]), nil
 		case "cos":
 			if len(args) < 1 {
-				return 0, fmt.Errorf("Too few arguments for cos(): %d", len(args))
+				return 0, newBulletmlError(fmt.Sprintf("Too few arguments for cos(): %d", len(args)), bmlNode)
 			}
 			return math.Cos(args[0]), nil
 		default:
-			return 0, fmt.Errorf("Unsupported function: %s", f.Name)
+			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", f.Name), bmlNode)
 		}
 	default:
 		var buf bytes.Buffer
 		if err := format.Node(&buf, token.NewFileSet(), node); err != nil {
 			return 0, err
 		}
-		return 0, fmt.Errorf("Unsupported expression: %s", string(buf.Bytes()))
+		return 0, newBulletmlError(fmt.Sprintf("Unsupported expression: %s", string(buf.Bytes())), bmlNode)
 	}
 }
 
