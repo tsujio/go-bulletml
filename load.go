@@ -814,6 +814,14 @@ func (b *BulletRef) xmlName() string {
 	return b.XMLName.Local
 }
 
+func (b *BulletRef) label() string {
+	return b.Label
+}
+
+func (b *BulletRef) params() []Param {
+	return b.Params
+}
+
 type ActionRef struct {
 	XMLName    xml.Name `xml:"actionRef"`
 	Label      string   `xml:"label,attr"`
@@ -842,6 +850,14 @@ func (a *ActionRef) parent() node {
 
 func (a *ActionRef) xmlName() string {
 	return a.XMLName.Local
+}
+
+func (a *ActionRef) label() string {
+	return a.Label
+}
+
+func (a *ActionRef) params() []Param {
+	return a.Params
 }
 
 type FireRef struct {
@@ -874,6 +890,14 @@ func (f *FireRef) xmlName() string {
 	return f.XMLName.Local
 }
 
+func (f *FireRef) label() string {
+	return f.Label
+}
+
+func (f *FireRef) params() []Param {
+	return f.Params
+}
+
 type Param struct {
 	XMLName    xml.Name `xml:"param"`
 	Expr       string   `xml:",chardata"`
@@ -895,4 +919,10 @@ func (p *Param) xmlName() string {
 type node interface {
 	xmlName() string
 	parent() node
+}
+
+type refType interface {
+	node
+	label() string
+	params() []Param
 }

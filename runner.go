@@ -128,6 +128,37 @@ func (r *runner) createActionProcess(action *Action, params parameters) *actionP
 	return p
 }
 
+func (r *runner) lookUpBulletDefTable(ref *BulletRef, params parameters) (*Bullet, parameters, error) {
+	return lookUpDefTable(ref, r.bulletDefTable, params, r.opts)
+}
+
+func (r *runner) lookUpActionDefTable(ref *ActionRef, params parameters) (*Action, parameters, error) {
+	return lookUpDefTable(ref, r.actionDefTable, params, r.opts)
+}
+
+func (r *runner) lookUpFireDefTable(ref *FireRef, params parameters) (*Fire, parameters, error) {
+	return lookUpDefTable(ref, r.fireDefTable, params, r.opts)
+}
+
+func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params parameters, opts *NewRunnerOptions) (*T, parameters, error) {
+	t, exists := table[ref.label()]
+	if !exists {
+		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.xmlName(), ref.label()), ref)
+	}
+
+	refParams := make(parameters)
+	for i, p := range ref.params() {
+		v, err := evaluateExpr(p.Expr, params, &p, opts)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		refParams[fmt.Sprintf("$%d", i+1)] = v
+	}
+
+	return t, refParams, nil
+}
+
 func (r *runner) Update() error {
 	newActionProcesses := make([]*actionProcess, 0, len(r.actionProcesses))
 
@@ -258,7 +289,7 @@ func (f *actionProcessFrame) update() error {
 				action = c.Action
 				params = f.params
 			} else if c.ActionRef != nil {
-				action, params, err = lookUpActionDefTable(c.ActionRef, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
+				action, params, err = f.actionProcess.runner.lookUpActionDefTable(c.ActionRef, f.params)
 				if err != nil {
 					return err
 				}
@@ -290,7 +321,7 @@ func (f *actionProcessFrame) update() error {
 				fire = &fr
 				params = f.params
 			} else if r, ok := c.(FireRef); ok {
-				fire, params, err = lookUpFireDefTable(&r, f.actionProcess.runner.fireDefTable, f.params, f.actionProcess.runner.opts)
+				fire, params, err = f.actionProcess.runner.lookUpFireDefTable(&r, f.params)
 				if err != nil {
 					return err
 				}
@@ -301,7 +332,7 @@ func (f *actionProcessFrame) update() error {
 			if fire.Bullet != nil {
 				bullet = fire.Bullet
 			} else if fire.BulletRef != nil {
-				bullet, params, err = lookUpBulletDefTable(fire.BulletRef, f.actionProcess.runner.bulletDefTable, params, f.actionProcess.runner.opts)
+				bullet, params, err = f.actionProcess.runner.lookUpBulletDefTable(fire.BulletRef, params)
 				if err != nil {
 					return err
 				}
@@ -406,7 +437,7 @@ func (f *actionProcessFrame) update() error {
 					action = &a
 					actionParams = params
 				case ActionRef:
-					action, actionParams, err = lookUpActionDefTable(&a, f.actionProcess.runner.actionDefTable, params, f.actionProcess.runner.opts)
+					action, actionParams, err = f.actionProcess.runner.lookUpActionDefTable(&a, params)
 					if err != nil {
 						return err
 					}
@@ -558,7 +589,7 @@ func (f *actionProcessFrame) update() error {
 				params = f.params
 			} else if r, ok := c.(ActionRef); ok {
 				var err error
-				action, params, err = lookUpActionDefTable(&r, f.actionProcess.runner.actionDefTable, f.params, f.actionProcess.runner.opts)
+				action, params, err = f.actionProcess.runner.lookUpActionDefTable(&r, f.params)
 				if err != nil {
 					return err
 				}
@@ -575,63 +606,6 @@ func (f *actionProcessFrame) update() error {
 	}
 
 	return actionProcessFrameEnd
-}
-
-func lookUpBulletDefTable(ref *BulletRef, table map[string]*Bullet, params parameters, opts *NewRunnerOptions) (*Bullet, parameters, error) {
-	t, exists := table[ref.Label]
-	if !exists {
-		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.XMLName.Local, ref.Label), ref)
-	}
-
-	refParams := make(parameters)
-	for i, p := range ref.Params {
-		v, err := evaluateExpr(p.Expr, params, &p, opts)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		refParams[fmt.Sprintf("$%d", i+1)] = v
-	}
-
-	return t, refParams, nil
-}
-
-func lookUpActionDefTable(ref *ActionRef, table map[string]*Action, params parameters, opts *NewRunnerOptions) (*Action, parameters, error) {
-	t, exists := table[ref.Label]
-	if !exists {
-		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.XMLName.Local, ref.Label), ref)
-	}
-
-	refParams := make(parameters)
-	for i, p := range ref.Params {
-		v, err := evaluateExpr(p.Expr, params, &p, opts)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		refParams[fmt.Sprintf("$%d", i+1)] = v
-	}
-
-	return t, refParams, nil
-}
-
-func lookUpFireDefTable(ref *FireRef, table map[string]*Fire, params parameters, opts *NewRunnerOptions) (*Fire, parameters, error) {
-	t, exists := table[ref.Label]
-	if !exists {
-		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.XMLName.Local, ref.Label), ref)
-	}
-
-	refParams := make(parameters)
-	for i, p := range ref.Params {
-		v, err := evaluateExpr(p.Expr, params, &p, opts)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		refParams[fmt.Sprintf("$%d", i+1)] = v
-	}
-
-	return t, refParams, nil
 }
 
 var (
