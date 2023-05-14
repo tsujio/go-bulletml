@@ -53,9 +53,10 @@ window.onload = () => {
         } else {
           const targetIdx = e.currentTarget.value.substring(0, e.currentTarget.selectionStart).lastIndexOf("\n") + 1
           const prefix = e.currentTarget.value.substring(0, targetIdx)
-          const suffixIdx = e.currentTarget.value.substring(e.currentTarget.selectionEnd).indexOf("\n")
-          const target = e.currentTarget.value.substring(targetIdx, suffixIdx ===  -1 ? Infinity : (e.currentTarget.selectionEnd + suffixIdx))
-          const suffix = e.currentTarget.value.substring(suffixIdx ===  -1 ? Infinity : (e.currentTarget.selectionEnd + suffixIdx))
+          const selectionEnd = e.currentTarget.value.charAt(e.currentTarget.selectionEnd - 1) === "\n" ? (e.currentTarget.selectionEnd - 1) : e.currentTarget.selectionEnd
+          const suffixIdx = e.currentTarget.value.substring(selectionEnd).indexOf("\n")
+          const target = e.currentTarget.value.substring(targetIdx, suffixIdx ===  -1 ? Infinity : (selectionEnd + suffixIdx))
+          const suffix = e.currentTarget.value.substring(suffixIdx ===  -1 ? Infinity : (selectionEnd + suffixIdx))
 
           result = prefix
 
