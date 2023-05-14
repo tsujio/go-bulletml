@@ -19,6 +19,12 @@ a {
     flex-basis: 50%;
     display: flex;
     height: 100%;
+    padding: 12px;
+}
+
+.simulator-container {
+    background: white;
+    box-sizing: border-box;
 }
 
 #simulator-iframe {
@@ -28,13 +34,8 @@ a {
 }
 
 .editor-container {
-    padding: 0 8px;
     flex-direction: column;
     box-sizing: border-box;
-}
-
-.editor-header-container {
-    margin-top: 12px;
 }
 
 .editor-header-container h1 {
@@ -114,7 +115,7 @@ a {
 }
 
 .editor-footer-container {
-    margin: 12px 0;
+    margin-top: 12px;
     display: flex;
     justify-content: center;
 }
