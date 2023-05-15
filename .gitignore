@@ -1,5 +1,6 @@
 *.exe
 *.wasm
 *.wasm.gz
+*.log
 .firebase
 .firebaserc

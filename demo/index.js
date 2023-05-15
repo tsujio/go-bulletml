@@ -3,8 +3,10 @@ window.onload = async () => {
   const textarea = document.querySelector("#bulletml-textarea")
   const applyButton = document.querySelector("#apply-button")
   const recordButton = document.querySelector("#record-button")
+  const shareButton = document.querySelector("#share-button")
   const downloadLink = document.querySelector("#download-link")
   const sampleSelector = document.querySelector("#sample-selector")
+  const shareUrl = document.querySelector("#share-url")
   const editorMessage = document.querySelector("#editor-message")
 
   const setEditorMessage = message => {
@@ -16,6 +18,9 @@ window.onload = async () => {
     setEditorMessage("")
 
     const response = await fetch(`./${name}.xml`)
+    if (!response.ok) {
+      throw new Error(await response.text())
+    }
     const data = await response.text()
     textarea.value = data
     iframe.contentWindow.setBulletML(data)
@@ -144,6 +149,34 @@ window.onload = async () => {
       }
     })
 
+    shareButton.addEventListener("click", async () => {
+      const id = btoa(Math.random()).substring(3).replaceAll(/\+|\/|=/g, "")
+
+      let userId = localStorage.getItem("USER_ID")
+      if (!userId) {
+        userId = crypto.randomUUID()
+        localStorage.setItem("USER_ID", userId)
+      }
+
+      const data = textarea.value + `\n<!-- ${JSON.stringify({userId: userId})} -->`
+
+      const response = await fetch(`https://storage.googleapis.com/bulletml-simulator-share/${id}.xml`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/xml",
+        },
+        body: data,
+      })
+
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+
+      const url = `${location.origin}${location.pathname}?id=${id}`
+      shareUrl.textContent = url
+      window.history.pushState({}, "", url)
+    })
+
     sampleSelector.addEventListener("change", async e => {
       await applySample(e.currentTarget.value)
     })
@@ -152,9 +185,34 @@ window.onload = async () => {
 
     if (typeof query.sample === "string" && query.sample.match(/^[a-z0-9\-]+$/)) {
       sampleSelector.value = query.sample
-    }
+      await applySample(sampleSelector.value)
+    } else if (typeof query.id === "string" && query.id.match(/^[a-zA-Z0-9]+$/)) {
+      const response = await fetch(`https://storage.googleapis.com/bulletml-simulator-share/${query.id}.xml`)
+      if (!response.ok) {
+        console.error(await response.text())
+        setEditorMessage(`Failed to fetch data (id=${query.id})`)
+        return
+      }
 
-    await applySample(sampleSelector.value)
+      let data = await response.text()
+
+      const idx = data.lastIndexOf("\n")
+      if (idx !== -1) {
+        const m = data.substring(idx).match(/^\n<!-- ([^ ]+) -->$/)
+        if (m) {
+          try {
+            JSON.parse(m[1])
+            data = data.substring(0, idx)
+          } catch (e) {
+          }
+        }
+      }
+
+      textarea.value = data
+      iframe.contentWindow.setBulletML(textarea.value)
+    } else {
+      await applySample(sampleSelector.value)
+    }
   }
 
   await main()
