@@ -126,7 +126,11 @@ window.onload = async () => {
 
         recorder.addEventListener("error", e => {
           console.error(e)
+
           setEditorMessage("Failed to record simulator.")
+
+          recordButton.removeAttribute("disabled")
+          recordButton.textContent = "Record"
         })
 
         recorder.start()
