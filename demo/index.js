@@ -18,7 +18,10 @@ window.onload = async () => {
 
     const response = await fetch(`./${name}.xml`)
     if (!response.ok) {
-      throw new Error(await response.text())
+      const text = await response.text()
+      console.error(text)
+      setEditorMessage(`Failed to fetch sample: ${text}`)
+      return
     }
     const data = await response.text()
     textarea.value = data
@@ -96,11 +99,16 @@ window.onload = async () => {
       if (!recorder || recorder.state !== "recording") {
         const canvas = iframe.contentWindow.document.querySelector("canvas")
         const stream = canvas.captureStream()
-        recorder = new MediaRecorder(stream, {mimeType: "video/webm;codecs=vp9"})
+        recorder = new MediaRecorder(stream, {mimeType: "video/webm"})
 
+        const chunks = []
         recorder.addEventListener("dataavailable", async e => {
+          chunks.push(e.data)
+        })
+
+        recorder.addEventListener("stop", async () => {
           try {
-            const data = new Blob([e.data], {type: e.data.type})
+            const data = new Blob(chunks, {type: recorder.mimeType})
 
             const buf = await data.arrayBuffer()
             const bin = new Uint8Array(buf)
@@ -112,9 +120,11 @@ window.onload = async () => {
             await ffmpeg.run("-i", "rec.webm", "-vcodec", "copy", "rec.mp4")
             const converted = ffmpeg.FS("readFile", "rec.mp4")
             try {
+              ffmpeg.FS("unlink", "rec.webm")
+              ffmpeg.FS("unlink", "rec.mp4")
               ffmpeg.exit()
             } catch (e) {
-              console.log(e)
+              console.warn(e)
             }
 
             const result = new Blob([converted], { type: "video/mp4" })
@@ -122,6 +132,11 @@ window.onload = async () => {
             downloadLink.download = "bulletml-rec.mp4"
             downloadLink.href = url
             downloadLink.style.display = "inline"
+
+            setEditorMessage("")
+          } catch (e) {
+            console.error(e)
+            setEditorMessage(`Failed to convert video: ${e}`)
           } finally {
             recordButton.removeAttribute("disabled")
             recordButton.textContent = "Record"
@@ -131,7 +146,7 @@ window.onload = async () => {
         recorder.addEventListener("error", e => {
           console.error(e)
 
-          setEditorMessage("Failed to record simulator.")
+          setEditorMessage(`Error occurred in recorder: ${e}`)
 
           recordButton.removeAttribute("disabled")
           recordButton.textContent = "Record"
@@ -169,7 +184,10 @@ window.onload = async () => {
       })
 
       if (!response.ok) {
-        throw new Error(await response.text())
+        const text = await response.text()
+        console.error(text)
+        setEditorMessage(`Failed to save data: ${text}`)
+        return
       }
 
       const url = `${location.origin}${location.pathname}?id=${id}`
@@ -193,6 +211,8 @@ window.onload = async () => {
       }
 
       window.history.pushState({}, "", url)
+
+      setEditorMessage("")
     })
 
     sampleSelector.addEventListener("change", async e => {
