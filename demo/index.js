@@ -1,4 +1,4 @@
-window.onload = () => {
+window.onload = async () => {
   const iframe = document.querySelector("#simulator-iframe")
   const textarea = document.querySelector("#bulletml-textarea")
   const applyButton = document.querySelector("#apply-button")
@@ -12,18 +12,16 @@ window.onload = () => {
     editorMessage.style.display = message ? "block" : "none"
   }
 
-  const applySample = name => {
+  const applySample = async name => {
     setEditorMessage("")
 
-    fetch(`./${name}.xml`)
-      .then(r => r.text())
-      .then(d => {
-        textarea.value = d
-        iframe.contentWindow.setBulletML(d)
-      })
+    const response = await fetch(`./${name}.xml`)
+    const data = await response.text()
+    textarea.value = data
+    iframe.contentWindow.setBulletML(data)
   }
 
-  const main = () => {
+  const main = async () => {
     if (!iframe.contentWindow.setBulletML || !iframe.contentWindow.setErrorCallback) {
       setTimeout(main, 500)
       return
@@ -96,12 +94,34 @@ window.onload = () => {
         const stream = canvas.captureStream()
         recorder = new MediaRecorder(stream, {mimeType: "video/webm;codecs=vp9"})
 
-        recorder.addEventListener("dataavailable", e => {
-          const data = new Blob([e.data], {type: e.data.type})
-          url = URL.createObjectURL(data)
-          downloadLink.download = "bulletml-rec.webm"
-          downloadLink.href = url
-          downloadLink.style.display = "inline"
+        recorder.addEventListener("dataavailable", async e => {
+          try {
+            const data = new Blob([e.data], {type: e.data.type})
+
+            const buf = await data.arrayBuffer()
+            const bin = new Uint8Array(buf)
+            const ffmpeg = FFmpeg.createFFmpeg({
+              corePath: new URL("thirdparty/ffmpeg.wasm-core.0.11.0/ffmpeg-core.js", document.location).href,
+            })
+            await ffmpeg.load()
+            ffmpeg.FS("writeFile", "rec.webm", bin)
+            await ffmpeg.run("-i", "rec.webm", "-vcodec", "copy", "rec.mp4")
+            const converted = ffmpeg.FS("readFile", "rec.mp4")
+            try {
+              ffmpeg.exit()
+            } catch (e) {
+              console.log(e)
+            }
+
+            const result = new Blob([converted], { type: "video/mp4" })
+            url = URL.createObjectURL(result)
+            downloadLink.download = "bulletml-rec.mp4"
+            downloadLink.href = url
+            downloadLink.style.display = "inline"
+          } finally {
+            recordButton.removeAttribute("disabled")
+            recordButton.textContent = "Record"
+          }
         })
 
         recorder.addEventListener("error", e => {
@@ -112,17 +132,16 @@ window.onload = () => {
         recorder.start()
 
         downloadLink.style.display = "none"
-
         recordButton.textContent = "Stop"
       } else {
         recorder.stop()
 
-        recordButton.textContent = "Record"
+        recordButton.setAttribute("disabled", "true")
       }
     })
 
-    sampleSelector.addEventListener("change", e => {
-      applySample(e.currentTarget.value)
+    sampleSelector.addEventListener("change", async e => {
+      await applySample(e.currentTarget.value)
     })
 
     const query = Object.fromEntries(location.search.substring(1,).split('&').map((kv) => kv.split('=')))
@@ -131,8 +150,8 @@ window.onload = () => {
       sampleSelector.value = query.sample
     }
 
-    applySample(sampleSelector.value)
+    await applySample(sampleSelector.value)
   }
 
-  main()
+  await main()
 }
