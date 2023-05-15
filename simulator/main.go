@@ -66,7 +66,7 @@ type Player struct {
 func (p *Player) update(game *Game) error {
 	if isJustPressed() {
 		x, y := cursorPosition()
-		if math.Pow(p.x-x, 2)+math.Pow(p.y-y, 2) < math.Pow(30, 2) {
+		if math.Pow(p.x-x, 2)+math.Pow(p.y-y, 2) < math.Pow(60, 2) {
 			p.dragged = true
 		}
 	}
@@ -109,7 +109,7 @@ func (e *Enemy) update(game *Game) error {
 	if !game.player.dragged {
 		if isJustPressed() {
 			x, y := cursorPosition()
-			if math.Pow(e.x-x, 2)+math.Pow(e.y-y, 2) < math.Pow(30, 2) {
+			if math.Pow(e.x-x, 2)+math.Pow(e.y-y, 2) < math.Pow(60, 2) {
 				e.dragged = true
 			}
 		}
