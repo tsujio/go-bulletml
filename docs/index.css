@@ -14,12 +14,25 @@ a {
     height: 100vh;
 }
 
+@media screen and (max-width: 1000px) {
+    .container {
+        flex-direction: column;
+    }
+}
+
 .simulator-container,
 .editor-container {
     flex-basis: 50%;
     display: flex;
     height: 100%;
     padding: 12px;
+}
+
+@media screen and (max-width: 1000px) {
+    .simulator-container,
+    .editor-container {
+        flex-basis: content;
+    }
 }
 
 .simulator-container {
@@ -33,6 +46,12 @@ a {
     border: none;
 }
 
+@media screen and (max-width: 1000px) {
+    #simulator-iframe {
+        height: 640px;
+    }
+}
+
 .editor-container {
     flex-direction: column;
     box-sizing: border-box;
@@ -44,10 +63,37 @@ a {
     font-size: 24px;
 }
 
+@media screen and (max-width: 1000px) {
+    .container {
+        margin-top: 48px;
+    }
+
+    .editor-header-container {
+        position: absolute;
+        top: 0;
+        width: 100%;
+        margin: 12px 0;
+    }
+
+    .editor-header-container h1 {
+        text-align: center;
+    }
+}
+
 .editor-menu-container {
     margin-top: 12px;
     display: flex;
     align-items: center;
+}
+
+@media screen and (max-width: 1000px) {
+    .editor-menu-container {
+        flex-direction: column;
+    }
+
+    .editor-menu-control-container {
+        margin-top: 12px;
+    }
 }
 
 .editor-menu-control-container {
@@ -87,6 +133,7 @@ a {
     width: 128px;
     border-radius: 4px;
     border: 1px solid gray;
+    background: white;
 }
 
 #editor-message {
@@ -114,13 +161,40 @@ a {
     border: 1px solid gray;
 }
 
+@media screen and (max-width: 1000px) {
+    .editor-textarea-container {
+        height: 640px;
+    }
+
+    #bulletml-textarea {
+        resize: vertical;
+    }
+}
+
 .editor-footer-container {
     margin-top: 12px;
     display: flex;
     justify-content: center;
+    align-items: center;
 }
 
-.editor-footer-container > *:not(:first-of-type):before {
+.editor-footer-link-container > *:not(:first-of-type):before,
+.editor-footer-copyright-container > *:before {
     content: "|";
     margin: 0 8px;
+}
+
+@media screen and (max-width: 1000px) {
+    .editor-footer-container {
+        flex-direction: column;
+    }
+
+    .editor-footer-copyright-container {
+        margin-top: 12px;
+    }
+
+    .editor-footer-copyright-container > *:before {
+        content: "";
+        margin: 0;
+    }
 }
