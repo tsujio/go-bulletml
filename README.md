@@ -6,7 +6,7 @@ A Go implementation of [BulletML](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/
 
 # Demo
 
-You can play a BulletML web simulator from [here](https://www.tsujio.org/go-bulletml).
+You can play a BulletML web simulator from [here](https://bulletml.tsujio.org).
 
 ![Simulator](https://github.com/tsujio/go-bulletml/blob/main/simulator.png?raw=true "Simulator")
 
