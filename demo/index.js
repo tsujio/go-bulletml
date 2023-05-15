@@ -6,7 +6,6 @@ window.onload = async () => {
   const shareButton = document.querySelector("#share-button")
   const downloadLink = document.querySelector("#download-link")
   const sampleSelector = document.querySelector("#sample-selector")
-  const shareUrl = document.querySelector("#share-url")
   const editorMessage = document.querySelector("#editor-message")
 
   const setEditorMessage = message => {
@@ -146,6 +145,7 @@ window.onload = async () => {
         recorder.stop()
 
         recordButton.setAttribute("disabled", "true")
+        recordButton.textContent = "Converting"
       }
     })
 
@@ -173,7 +173,25 @@ window.onload = async () => {
       }
 
       const url = `${location.origin}${location.pathname}?id=${id}`
-      shareUrl.textContent = url
+
+      const selectorId = sampleSelector.getAttribute("id")
+      const parent = sampleSelector.parentElement
+      sampleSelector.remove()
+      const elem = document.createElement("input")
+      elem.setAttribute("type", "text")
+      elem.setAttribute("readonly", "true")
+      elem.setAttribute("value", url)
+      elem.setAttribute("id", selectorId)
+      parent.appendChild(elem)
+      elem.focus()
+      elem.select()
+
+      try {
+        await navigator.clipboard.writeText(url)
+      } catch (e) {
+        console.warn(e)
+      }
+
       window.history.pushState({}, "", url)
     })
 
