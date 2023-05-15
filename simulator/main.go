@@ -21,26 +21,62 @@ const (
 	screenHeight = 640
 )
 
+var touchID *ebiten.TouchID
+
+func isJustPressed() bool {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		return true
+	}
+
+	if touchIDs := inpututil.AppendJustPressedTouchIDs(nil); len(touchIDs) > 0 {
+		touchID = &touchIDs[0]
+		return true
+	}
+
+	return false
+}
+
+func isJustReleased() bool {
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		return true
+	}
+
+	if touchID != nil && inpututil.IsTouchJustReleased(*touchID) {
+		return true
+	}
+
+	return false
+}
+
+func cursorPosition() (float64, float64) {
+	if touchID != nil {
+		x, y := ebiten.TouchPosition(*touchID)
+		return float64(x), float64(y)
+	}
+
+	x, y := ebiten.CursorPosition()
+	return float64(x), float64(y)
+}
+
 type Player struct {
 	x, y    float64
 	dragged bool
 }
 
 func (p *Player) update() error {
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		if math.Pow(p.x-float64(x), 2)+math.Pow(p.y-float64(y), 2) < math.Pow(6, 2) {
+	if isJustPressed() {
+		x, y := cursorPosition()
+		if math.Pow(p.x-x, 2)+math.Pow(p.y-y, 2) < math.Pow(6, 2) {
 			p.dragged = true
 		}
 	}
 
-	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+	if isJustReleased() {
 		p.dragged = false
 	}
 
 	if p.dragged {
-		x, y := ebiten.CursorPosition()
-		p.x, p.y = float64(x), float64(y)
+		p.x, p.y = cursorPosition()
 	}
 
 	if p.x < 0 {
@@ -70,20 +106,19 @@ type Enemy struct {
 }
 
 func (e *Enemy) update() error {
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		if math.Pow(e.x-float64(x), 2)+math.Pow(e.y-float64(y), 2) < math.Pow(6, 2) {
+	if isJustPressed() {
+		x, y := cursorPosition()
+		if math.Pow(e.x-x, 2)+math.Pow(e.y-y, 2) < math.Pow(6, 2) {
 			e.dragged = true
 		}
 	}
 
-	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+	if isJustReleased() {
 		e.dragged = false
 	}
 
 	if e.dragged {
-		x, y := ebiten.CursorPosition()
-		e.x, e.y = float64(x), float64(y)
+		e.x, e.y = cursorPosition()
 	}
 
 	if err := e.runner.Update(); err != nil {
