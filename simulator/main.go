@@ -63,10 +63,10 @@ type Player struct {
 	dragged bool
 }
 
-func (p *Player) update() error {
+func (p *Player) update(game *Game) error {
 	if isJustPressed() {
 		x, y := cursorPosition()
-		if math.Pow(p.x-x, 2)+math.Pow(p.y-y, 2) < math.Pow(6, 2) {
+		if math.Pow(p.x-x, 2)+math.Pow(p.y-y, 2) < math.Pow(30, 2) {
 			p.dragged = true
 		}
 	}
@@ -105,20 +105,22 @@ type Enemy struct {
 	dragged bool
 }
 
-func (e *Enemy) update() error {
-	if isJustPressed() {
-		x, y := cursorPosition()
-		if math.Pow(e.x-x, 2)+math.Pow(e.y-y, 2) < math.Pow(6, 2) {
-			e.dragged = true
+func (e *Enemy) update(game *Game) error {
+	if !game.player.dragged {
+		if isJustPressed() {
+			x, y := cursorPosition()
+			if math.Pow(e.x-x, 2)+math.Pow(e.y-y, 2) < math.Pow(30, 2) {
+				e.dragged = true
+			}
 		}
-	}
 
-	if isJustReleased() {
-		e.dragged = false
-	}
+		if isJustReleased() {
+			e.dragged = false
+		}
 
-	if e.dragged {
-		e.x, e.y = cursorPosition()
+		if e.dragged {
+			e.x, e.y = cursorPosition()
+		}
 	}
 
 	if err := e.runner.Update(); err != nil {
@@ -156,7 +158,7 @@ var bulletImg = func() *ebiten.Image {
 	return img
 }()
 
-func (b *Bullet) update() error {
+func (b *Bullet) update(game *Game) error {
 	if err := b.runner.Update(); err != nil {
 		return err
 	}
@@ -225,19 +227,19 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	if err := g.player.update(); err != nil {
+	if err := g.player.update(g); err != nil {
 		g.notifyError(err)
 	}
 
 	for _, e := range g.enemies {
-		if err := e.update(); err != nil {
+		if err := e.update(g); err != nil {
 			g.notifyError(err)
 		}
 	}
 
 	_bullets := make([]*Bullet, 0, len(g.bullets))
 	for _, b := range g.bullets {
-		if err := b.update(); err != nil {
+		if err := b.update(g); err != nil {
 			g.notifyError(err)
 		}
 
