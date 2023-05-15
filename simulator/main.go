@@ -184,6 +184,7 @@ type Game struct {
 	enemies       []*Enemy
 	bullets       []*Bullet
 	errorCallback func(error)
+	errorOccurred bool
 }
 
 func (g *Game) appendSample(name string, source io.Reader) {
@@ -218,6 +219,10 @@ func (g *Game) Update() error {
 				g.initializeRunner()
 			}
 		}
+	}
+
+	if g.errorOccurred {
+		return nil
 	}
 
 	if err := g.player.update(); err != nil {
@@ -311,9 +316,13 @@ func (g *Game) initializeRunner() {
 	g.enemies = []*Enemy{enemy}
 
 	g.bullets = nil
+
+	g.errorOccurred = false
 }
 
 func (g *Game) notifyError(err error) {
+	g.errorOccurred = true
+
 	if g.errorCallback != nil {
 		g.errorCallback(err)
 	} else {
