@@ -26,9 +26,8 @@
           };
         }
 
-        const url = "https://storage.googleapis.com/tsujio-game-serve/bulletml-simulator.wasm.gz"
         const go = new Go();
-        WebAssembly.instantiateStreaming(fetch(url), go.importObject).then(result => {
+        WebAssembly.instantiateStreaming(fetch("./simulator.wasm"), go.importObject).then(result => {
           document.querySelector("#loading").remove()
 
           go.run(result.instance);
