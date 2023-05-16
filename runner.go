@@ -160,19 +160,17 @@ func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params paramet
 }
 
 func (r *runner) Update() error {
-	newActionProcesses := make([]*actionProcess, 0, len(r.actionProcesses))
-
+	_actionProcesses := r.actionProcesses[:0]
 	for _, p := range r.actionProcesses {
 		if err := p.update(); err != nil {
 			if err != actionProcessEnd {
 				return err
 			}
 		} else {
-			newActionProcesses = append(newActionProcesses, p)
+			_actionProcesses = append(_actionProcesses, p)
 		}
 	}
-
-	r.actionProcesses = newActionProcesses
+	r.actionProcesses = _actionProcesses
 
 	r.updateBulletPosition(r)
 
