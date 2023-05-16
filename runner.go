@@ -717,6 +717,8 @@ func evalAst(node ast.Expr, params parameters, bmlNode node, opts *NewRunnerOpti
 		default:
 			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", f.Name), bmlNode)
 		}
+	case *ast.ParenExpr:
+		return evalAst(e.X, params, bmlNode, opts)
 	default:
 		var buf bytes.Buffer
 		if err := format.Node(&buf, token.NewFileSet(), node); err != nil {
