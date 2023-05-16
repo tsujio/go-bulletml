@@ -14,7 +14,7 @@ a {
     height: 100vh;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1200px) {
     .container {
         flex-direction: column;
     }
@@ -28,7 +28,7 @@ a {
     padding: 12px;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1200px) {
     .simulator-container,
     .editor-container {
         flex-basis: content;
@@ -46,7 +46,7 @@ a {
     border: none;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1200px) {
     #simulator-iframe {
         height: 640px;
     }
@@ -63,7 +63,7 @@ a {
     font-size: 24px;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1200px) {
     .container {
         margin-top: 48px;
     }
@@ -95,7 +95,7 @@ a {
     flex-wrap: wrap;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 800px) {
     .editor-menu-container {
         flex-direction: column;
     }
@@ -103,6 +103,11 @@ a {
     .editor-menu-control-container {
         margin-top: 12px;
         width: 100%;
+    }
+}
+
+@media screen and (max-width: 500px) {
+    .editor-menu-control-container {
         justify-content: space-between;
     }
 }
@@ -166,7 +171,7 @@ a {
     border: 1px solid gray;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1200px) {
     .editor-textarea-container {
         height: 640px;
     }
@@ -189,7 +194,7 @@ a {
     margin: 0 8px;
 }
 
-@media screen and (max-width: 1000px) {
+@media screen and (max-width: 1200px) {
     .editor-footer-container {
         flex-direction: column;
     }
