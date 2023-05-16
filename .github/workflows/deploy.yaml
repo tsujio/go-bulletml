@@ -1,0 +1,26 @@
+name: Deploy
+on:
+  push:
+    branches:
+    - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-go@v3
+      with:
+        go-version: 1.19.4
+    - run: make
+    - uses: google-github-actions/auth@v1
+      with:
+        workload_identity_provider: 'projects/636746294233/locations/global/workloadIdentityPools/github-actions/providers/github-actions'
+        service_account: 'github-actions@go-bulletml.iam.gserviceaccount.com'
+    - uses: actions/setup-node@v3.1.1
+      with:
+        node-version: v18.16.0
+    - run: npm install -g firebase-tools
+    - run: make deploy
