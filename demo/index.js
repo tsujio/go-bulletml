@@ -253,5 +253,17 @@ window.onload = async () => {
     }
   }
 
+  const resize = () => {
+    if (window.innerWidth < 1200) {
+      iframe.style.height = Math.min(iframe.clientWidth * 4 / 3, 640) + "px"
+    } else {
+      iframe.style.height = "100%"
+    }
+  }
+
+  window.addEventListener("resize", resize)
+
+  resize()
+
   await main()
 }

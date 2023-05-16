@@ -26,6 +26,7 @@ a {
     display: flex;
     height: 100%;
     padding: 12px;
+    box-sizing: border-box;
 }
 
 @media screen and (max-width: 1200px) {
@@ -37,7 +38,7 @@ a {
 
 .simulator-container {
     background: white;
-    box-sizing: border-box;
+    justify-content: center;
 }
 
 #simulator-iframe {
@@ -48,13 +49,12 @@ a {
 
 @media screen and (max-width: 1200px) {
     #simulator-iframe {
-        height: 640px;
+        max-width: 480px;
     }
 }
 
 .editor-container {
     flex-direction: column;
-    box-sizing: border-box;
 }
 
 .editor-header-container h1 {
