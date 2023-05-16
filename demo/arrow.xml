@@ -8,8 +8,6 @@
                 <term>180</term>
                 <speed type="absolute">$1</speed>
             </changeSpeed>
-            <wait>180</wait>
-            <vanish />
         </action>
     </bullet>
     <action label="2way">

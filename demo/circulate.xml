@@ -22,7 +22,6 @@
                 <wait>3.14 * $1 / 2</wait>
             </action>
         </repeat>
-        <vanish />
     </action>
     <action label="top">
         <repeat>

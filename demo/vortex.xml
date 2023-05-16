@@ -14,12 +14,7 @@
                     <action>
                         <fire>
                             <direction type="sequence">45</direction>
-                            <bullet>
-                                <action>
-                                    <wait>600</wait>
-                                    <vanish />
-                                </action>
-                            </bullet>
+                            <bullet />
                         </fire>
                     </action>
                 </repeat>

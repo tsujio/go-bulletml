@@ -245,7 +245,8 @@ func (g *Game) Update() error {
 			g.notifyError(err)
 		}
 
-		if !b.runner.Vanished() {
+		if !b.runner.Vanished() &&
+			b.x > -screenWidth && b.x < screenWidth*2 && b.y > -screenHeight && b.y < screenHeight*2 {
 			_bullets = append(_bullets, b)
 		}
 	}
@@ -267,7 +268,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		b.draw(screen)
 	}
 
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("%.1ffps", ebiten.CurrentFPS()))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("%.1ffps\n%d bullets", ebiten.CurrentFPS(), len(g.bullets)))
 
 	if len(g.samples) > 0 {
 		ebitenutil.DebugPrintAt(screen, g.samples[g.index].name, screenWidth-len(g.samples[g.index].name)*6, 0)

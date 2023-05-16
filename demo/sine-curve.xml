@@ -3,12 +3,7 @@
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
     <fire label="fire">
         <direction type="relative">60 * sin($1)</direction>
-        <bullet>
-            <action>
-                <wait>600</wait>
-                <vanish />
-            </action>
-        </bullet>
+        <bullet />
     </fire>
     <action label="top">
         <changeDirection>
