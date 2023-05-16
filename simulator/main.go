@@ -169,9 +169,11 @@ func (b *Bullet) update(game *Game) error {
 }
 
 func (b *Bullet) draw(dst *ebiten.Image) {
-	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Translate(b.x-3, b.y-3)
-	dst.DrawImage(bulletImg, opts)
+	if b.x > -10 && b.x < screenWidth+10 && b.y > -10 && b.y < screenHeight+10 {
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(b.x-3, b.y-3)
+		dst.DrawImage(bulletImg, opts)
+	}
 }
 
 type sample struct {
