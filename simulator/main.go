@@ -239,20 +239,21 @@ func (g *Game) Update() error {
 		}
 	}
 
-	bulletsLen := len(g.bullets)
-	_bullets := make([]*Bullet, 0, bulletsLen)
-	for i := 0; i < bulletsLen; i++ {
+	for i, n := 0, len(g.bullets); i < n; i++ {
 		b := g.bullets[i]
 		if err := b.update(g); err != nil {
 			g.notifyError(err)
 		}
+	}
 
+	_bullets := g.bullets[:0]
+	for _, b := range g.bullets {
 		if !b.runner.Vanished() &&
 			b.x > -screenWidth && b.x < screenWidth*2 && b.y > -screenHeight && b.y < screenHeight*2 {
 			_bullets = append(_bullets, b)
 		}
 	}
-	g.bullets = append(_bullets, g.bullets[bulletsLen:]...)
+	g.bullets = _bullets
 
 	return nil
 }
