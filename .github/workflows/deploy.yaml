@@ -3,6 +3,12 @@ on:
   push:
     branches:
     - main
+    paths-ignore:
+    - '*.md'
+    - '*.gif'
+    - '*.png'
+    - 'LICENSE'
+    - '.gitignore'
 jobs:
   build:
     runs-on: ubuntu-latest
