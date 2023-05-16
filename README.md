@@ -108,7 +108,9 @@ if err := enemy.runner.Update(); err != nil {
 	panic(err)
 }
 
-for _, b := range bullets {
+// bullets may be extended in b.runner.Update (by calling bulletml.NewRunnerOptions.OnBulletFired), so you should write loop like this.
+for i, n := 0, len(bullets); i < n; i++ {
+	b := bullets[i]
 	if err := b.runner.Update(); err != nil {
 		panic(err)
 	}
@@ -215,24 +217,27 @@ func (g *Game) Update() error {
 		}
 	}
 
-	_bullets := make([]*Bullet, 0, len(g.bullets))
-
 	// Update bullets
-	for _, b := range g.bullets {
+	// (g.bullets may be extended in b.runner.Update(), so you should write loop like this.)
+	for i, n := 0, len(g.bullets); i < n; i++ {
+		b := g.bullets[i]
+
 		if err := b.runner.Update(); err != nil {
 			panic(err)
 		}
 
 		// Set updated bullet position
 		b.x, b.y = b.runner.Position()
+	}
 
-		// Keep bullets only not vanished and within the screen
+	// Keep bullets only not vanished and within the screen
+	_bullets := g.bullets[:0]
+	for _, b := range g.bullets {
 		if !b.runner.Vanished() &&
 			b.x >= 0 && b.x <= screenWidth && b.y >= 0 && b.y <= screenHeight {
 			_bullets = append(_bullets, b)
 		}
 	}
-
 	g.bullets = _bullets
 
 	return nil

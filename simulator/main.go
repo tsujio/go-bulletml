@@ -237,8 +237,10 @@ func (g *Game) Update() error {
 		}
 	}
 
-	_bullets := make([]*Bullet, 0, len(g.bullets))
-	for _, b := range g.bullets {
+	bulletsLen := len(g.bullets)
+	_bullets := make([]*Bullet, 0, bulletsLen)
+	for i := 0; i < bulletsLen; i++ {
+		b := g.bullets[i]
 		if err := b.update(g); err != nil {
 			g.notifyError(err)
 		}
@@ -247,7 +249,7 @@ func (g *Game) Update() error {
 			_bullets = append(_bullets, b)
 		}
 	}
-	g.bullets = _bullets
+	g.bullets = append(_bullets, g.bullets[bulletsLen:]...)
 
 	return nil
 }

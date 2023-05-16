@@ -1,0 +1,46 @@
+<?xml version="1.0" ?>
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <bullet label="bullet">
+        <direction type="aim">0</direction>
+        <speed type="absolute">0</speed>
+        <action>
+            <changeSpeed>
+                <term>120</term>
+                <speed type="absolute">3</speed>
+            </changeSpeed>
+            <wait>120</wait>
+            <fire>
+                <bulletRef label="bullet" />
+            </fire>
+            <repeat>
+                <times>20</times>
+                <action>
+                    <wait>3</wait>
+                    <fire>
+                        <direction type="aim">0</direction>
+                        <speed type="absolute">0</speed>
+                        <bullet>
+                            <action>
+                                <changeSpeed>
+                                    <term>120</term>
+                                    <speed type="absolute">3</speed>
+                                </changeSpeed>
+                                <wait>300</wait>
+                                <vanish />
+                            </action>
+                        </bullet>
+                    </fire>
+                </action>
+            </repeat>
+            <wait>300</wait>
+            <vanish />
+        </action>
+    </bullet>
+    <action label="top">
+        <fire>
+            <direction type="aim">-30</direction>
+            <bulletRef label="bullet" />
+        </fire>
+    </action>
+</bulletml>
