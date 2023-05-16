@@ -136,7 +136,7 @@ window.onload = async () => {
             setEditorMessage("")
           } catch (e) {
             console.error(e)
-            setEditorMessage(`Failed to convert video: ${e}`)
+            setEditorMessage(`Failed to convert video (maybe cannot work well on mobile devices): ${e}`)
           } finally {
             recordButton.removeAttribute("disabled")
             recordButton.textContent = "Record"
