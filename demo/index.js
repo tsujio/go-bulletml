@@ -99,7 +99,7 @@ window.onload = async () => {
       if (!recorder || recorder.state !== "recording") {
         const canvas = iframe.contentWindow.document.querySelector("canvas")
         const stream = canvas.captureStream()
-        recorder = new MediaRecorder(stream, {mimeType: "video/webm"})
+        recorder = new MediaRecorder(stream, {mimeType: "video/webm;codecs=vp9"})
 
         const chunks = []
         recorder.addEventListener("dataavailable", async e => {
