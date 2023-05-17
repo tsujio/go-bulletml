@@ -44,29 +44,46 @@ window.onload = async () => {
     })
 
     textarea.addEventListener("keydown", e => {
-      if (e.shiftKey && e.keyCode === 13) {
-        e.preventDefault()
-        setEditorMessage("")
-        iframe.contentWindow.setBulletML(e.currentTarget.value)
+      if (e.key === "Enter") {
+        if (e.shiftKey) {
+          e.preventDefault()
+          setEditorMessage("")
+          iframe.contentWindow.setBulletML(e.currentTarget.value)
+        } else {
+          const value = e.currentTarget.value
+          const prefix = value.substring(0, e.currentTarget.selectionStart)
+          const suffix = value.substring(e.currentTarget.selectionEnd)
+          if (value.charAt(e.currentTarget.selectionStart) === "\n") {
+            e.preventDefault()
+            const complement = "\n" + prefix.substring(prefix.lastIndexOf("\n") + 1).match(/^( *)/)[1]
+            const selectionStart = e.currentTarget.selectionStart
+            e.currentTarget.value = prefix + complement + suffix
+            e.currentTarget.selectionStart = e.currentTarget.selectionEnd = selectionStart + complement.length
+          }
+        }
+
+        return
       }
 
-      if (e.keyCode === 9) {
+      if (e.key === "Tab") {
         e.preventDefault()
 
+        const value = e.currentTarget.value
+        const selectionStart = e.currentTarget.selectionStart
+        const selectionEnd = e.currentTarget.selectionEnd
         const tab = "    "
         let result = ""
 
-        if (e.currentTarget.selectionStart === e.currentTarget.selectionEnd && !e.shiftKey) {
-          const prefix = e.currentTarget.value.substring(0, e.currentTarget.selectionStart)
-          const suffix = e.currentTarget.value.substring(e.currentTarget.selectionStart)
+        if (selectionStart === selectionEnd && !e.shiftKey) {
+          const prefix = value.substring(0, selectionStart)
+          const suffix = value.substring(selectionStart)
           result = prefix + tab + suffix
         } else {
-          const targetIdx = e.currentTarget.value.substring(0, e.currentTarget.selectionStart).lastIndexOf("\n") + 1
-          const prefix = e.currentTarget.value.substring(0, targetIdx)
-          const selectionEnd = e.currentTarget.value.charAt(e.currentTarget.selectionEnd - 1) === "\n" ? (e.currentTarget.selectionEnd - 1) : e.currentTarget.selectionEnd
-          const suffixIdx = e.currentTarget.value.substring(selectionEnd).indexOf("\n")
-          const target = e.currentTarget.value.substring(targetIdx, suffixIdx ===  -1 ? Infinity : (selectionEnd + suffixIdx))
-          const suffix = e.currentTarget.value.substring(suffixIdx ===  -1 ? Infinity : (selectionEnd + suffixIdx))
+          const targetIdx = value.substring(0, selectionStart).lastIndexOf("\n") + 1
+          const prefix = value.substring(0, targetIdx)
+          const suffixIdx = value.indexOf("\n", selectionStart === selectionEnd ? selectionEnd : selectionEnd - 1)
+          const target = value.substring(targetIdx, suffixIdx ===  -1 ? Infinity : suffixIdx)
+          const suffix = value.substring(suffixIdx ===  -1 ? Infinity : suffixIdx)
 
           result = prefix
 
@@ -79,18 +96,19 @@ window.onload = async () => {
           result += suffix
         }
 
-        const end = e.currentTarget.selectionEnd
-        const origLen = e.currentTarget.value.length
-        const origLineN = (e.currentTarget.value.substring(0, e.currentTarget.selectionEnd).match(/\n/g) || []).length
         e.currentTarget.value = result
-        e.currentTarget.selectionEnd = end + result.length - origLen
-        const newLineN = (e.currentTarget.value.substring(0, e.currentTarget.selectionEnd).match(/\n/g) || []).length
-        if (origLineN !== newLineN) {
-          const idx = e.currentTarget.value.substring(e.currentTarget.selectionEnd).indexOf("\n")
-          if (idx !== -1) {
-            e.currentTarget.selectionStart = e.currentTarget.selectionEnd += idx + 1
+
+        let offset = 0
+        if (e.currentTarget.value.length < value.length) {
+          const col = selectionEnd - value.lastIndexOf("\n", selectionEnd - 1) - 1
+          if (col < tab.length) {
+            offset = tab.length - col
           }
         }
+
+        e.currentTarget.selectionStart = e.currentTarget.selectionEnd = selectionEnd + result.length - value.length + offset
+
+        return
       }
     })
 
