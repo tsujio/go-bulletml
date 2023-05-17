@@ -78,33 +78,30 @@ window.onload = async () => {
           const prefix = value.substring(0, selectionStart)
           const suffix = value.substring(selectionStart)
           result = prefix + tab + suffix
-        } else {
-          const targetIdx = value.substring(0, selectionStart).lastIndexOf("\n") + 1
-          const prefix = value.substring(0, targetIdx)
-          const suffixIdx = value.indexOf("\n", selectionStart === selectionEnd ? selectionEnd : selectionEnd - 1)
-          const target = value.substring(targetIdx, suffixIdx ===  -1 ? Infinity : suffixIdx)
-          const suffix = value.substring(suffixIdx ===  -1 ? Infinity : suffixIdx)
+          e.currentTarget.value = result
+          e.currentTarget.selectionStart = e.currentTarget.selectionEnd = selectionStart + tab.length
+          return
+        }
 
-          result = prefix
+        const lines = value.split("\n")
+        const startLineIdx = (value.substring(0, selectionStart).match(/\n/g) || []).length
+        const endLineIdx = (value.substring(0, selectionEnd).match(/\n/g) || []).length +
+          (selectionStart !== selectionEnd && value.charAt(selectionEnd - 1) === "\n" ? -1 : 0)
 
+        const selectionStartColIdx = selectionStart - lines.slice(0, startLineIdx).reduce((a, c) => a + c.length, 0) - startLineIdx
+        const selectionEndColIdx = selectionEnd - lines.slice(0, endLineIdx).reduce((a, c) => a + c.length, 0) - endLineIdx
+
+        for (let i = startLineIdx; i <= endLineIdx; i++) {
           if (e.shiftKey) {
-            result += target.replaceAll(/^ {1,4}/gm, "")
+            lines[i] = lines[i].replace(/^ {1,4}/, "")
           } else {
-            result += target.replaceAll(/^/gm, tab)
+            lines[i] = tab + lines[i]
           }
-
-          result += suffix
         }
 
-        e.currentTarget.value = result
-        e.currentTarget.selectionStart = e.currentTarget.selectionEnd = selectionEnd + result.length - value.length
-
-        const origLineNum = (value.substring(0, selectionEnd).match(/\n/g) || []).length + 1
-        const newLineNum = (e.currentTarget.value.substring(0, e.currentTarget.selectionEnd).match(/\n/g) || []).length + 1
-        if (origLineNum !== newLineNum) {
-          const newLines = [...e.currentTarget.value.matchAll(/\n/g)]
-          e.currentTarget.selectionStart = e.currentTarget.selectionEnd = newLines[origLineNum - 2].index + 1
-        }
+        e.currentTarget.value = lines.join("\n")
+        e.currentTarget.selectionStart = lines.slice(0, startLineIdx).reduce((a, c) => a + c.length, 0) + startLineIdx + Math.min(selectionStartColIdx, lines[startLineIdx].length)
+        e.currentTarget.selectionEnd = lines.slice(0, endLineIdx).reduce((a, c) => a + c.length, 0) + endLineIdx + Math.min(selectionEndColIdx, lines[endLineIdx].length)
 
         return
       }
