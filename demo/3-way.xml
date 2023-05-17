@@ -1,0 +1,40 @@
+<?xml version="1.0" ?>    
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <bullet label="main">
+        <speed>3</speed>
+    </bullet>
+    <action label="n-way">
+        <repeat>
+            <times>10</times>
+            <action>
+                <fire>
+                    <direction>-$2 / 2</direction>
+                    <bulletRef label="main" />
+                </fire>
+                <repeat>
+                    <times>$1 - 1</times>
+                    <action>
+                        <fire>
+                            <direction type="sequence">$2 / ($1 - 1)</direction>
+                            <bulletRef label="main" />
+                        </fire>
+                    </action>
+                </repeat>
+                <wait>3</wait>
+            </action>
+        </repeat>
+    </action>
+    <action label="top">
+        <repeat>
+            <times>999</times>
+            <action>
+                <actionRef label="n-way">
+                    <param>3</param>
+                    <param>30</param>
+                </actionRef>
+                <wait>60</wait>
+            </action>
+        </repeat>
+    </action>
+</bulletml>

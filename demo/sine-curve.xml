@@ -1,23 +1,67 @@
-<?xml version="1.0" ?>
+<?xml version="1.0" ?>    
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
-    <fire label="fire">
-        <direction type="relative">60 * sin($1)</direction>
-        <bullet />
-    </fire>
-    <action label="top">
-        <changeDirection>
-            <term>1</term>
-            <direction type="absolute">180</direction>
-        </changeDirection>
-        <wait>1</wait>
+
+    <!-- This sample uses nonstandard features (sin() and $loop.index) -->
+
+    <bullet label="sine-curve">
+        <action>
+            <repeat>
+                <times>999</times>
+                <action>
+                    <changeDirection>
+                        <term>1</term>
+                        <direction type="absolute">$1 + 60 * sin($loop.index / 7 - 3.14 / 2)</direction>
+                    </changeDirection>
+                    <wait>1</wait>
+                </action>
+            </repeat>
+        </action>
+    </bullet>
+    <action label="sine-snake">
+        <repeat>
+            <times>70</times>
+            <action>
+                <fire>
+                    <speed>3</speed>
+                    <bulletRef label="sine-curve">
+                        <param>$1</param>
+                    </bulletRef>
+                </fire>
+                <wait>2</wait>
+            </action>
+        </repeat>
+    </action>
+    <action label="top-1">
         <repeat>
             <times>999</times>
             <action>
-                <fireRef label="fire">
-                    <param>$loop.index / 10</param>
-                </fireRef>
-                <wait>10</wait>
+                <actionRef label="sine-snake">
+                    <param>180 + 60 * $rand - 30</param>
+                </actionRef>
+                <wait>60</wait>
+            </action>
+        </repeat>
+    </action>
+    <action label="top-2">
+        <repeat>
+            <times>999</times>
+            <action>
+                <actionRef label="sine-snake">
+                    <param>180 + 60 * $rand - 30</param>
+                </actionRef>
+                <wait>60</wait>
+            </action>
+        </repeat>
+    </action>
+    <action label="top-3">
+        <repeat>
+            <times>999</times>
+            <action>
+                <actionRef label="sine-snake">
+                    <param>180 + 60 * $rand - 30</param>
+                </actionRef>
+                <wait>60</wait>
             </action>
         </repeat>
     </action>

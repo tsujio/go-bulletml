@@ -1,0 +1,71 @@
+<?xml version="1.0" ?>    
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <action label="laser">
+        <fire>
+            <speed>3</speed>
+            <bullet />
+        </fire>
+        <wait>1</wait>
+        <repeat>
+            <times>29</times>
+            <action>
+                <fire>
+                    <speed>3</speed>
+                    <direction type="sequence">0</direction>
+                    <bullet />
+                </fire>
+                <wait>1</wait>
+            </action>
+        </repeat>
+    </action>
+    <bullet label="satellite">
+        <action>
+            <wait>30</wait>
+            <changeSpeed>
+                <term>1</term>
+                <speed>0</speed>
+            </changeSpeed>
+            <repeat>
+                <times>999</times>
+                <action>
+                    <actionRef label="laser" />
+                    <wait>60</wait>
+                </action>
+            </repeat>
+            <vanish />
+        </action>
+    </bullet>
+    <action label="top">
+        <fire>
+            <direction type="absolute">60</direction>
+            <speed>4</speed>
+            <bulletRef label="satellite" />
+        </fire>
+        <fire>
+            <direction type="absolute">-60</direction>
+            <speed>4</speed>
+            <bulletRef label="satellite" />
+        </fire>
+        <fire>
+            <direction type="absolute">75</direction>
+            <speed>5</speed>
+            <bulletRef label="satellite" />
+        </fire>
+        <fire>
+            <direction type="absolute">-75</direction>
+            <speed>5</speed>
+            <bulletRef label="satellite" />
+        </fire>
+        <fire>
+            <direction type="absolute">85</direction>
+            <speed>6</speed>
+            <bulletRef label="satellite" />
+        </fire>
+        <fire>
+            <direction type="absolute">-85</direction>
+            <speed>6</speed>
+            <bulletRef label="satellite" />
+        </fire>
+    </action>
+</bulletml>

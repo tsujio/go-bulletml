@@ -1,0 +1,44 @@
+<?xml version="1.0" ?>    
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+    <bullet label="ring">
+        <action>
+            <repeat>
+                <times>45</times>
+                <action>
+                    <fire>
+                        <direction type="sequence">8</direction>
+                        <speed>20</speed>
+                        <bullet>
+                            <action>
+                                <wait>1</wait>
+                                <changeSpeed>
+                                    <term>1</term>
+                                    <speed>3</speed>
+                                </changeSpeed>
+                                <changeDirection>
+                                    <term>1</term>
+                                    <direction type="absolute">$1</direction>
+                                </changeDirection>
+                            </action>
+                        </bullet>
+                    </fire>
+                </action>
+            </repeat>
+            <vanish />
+        </action>
+    </bullet>
+    <action label="top">
+        <repeat>
+            <times>999</times>
+            <action>
+                <fire>
+                    <bulletRef label="ring">
+                        <param>180 + 60 * $rand - 30</param>
+                    </bulletRef>
+                </fire>
+                <wait>60</wait>
+            </action>
+        </repeat>
+    </action>
+</bulletml>
