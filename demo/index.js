@@ -99,7 +99,21 @@ window.onload = async () => {
       if (!recorder || recorder.state !== "recording") {
         const canvas = iframe.contentWindow.document.querySelector("canvas")
         const stream = canvas.captureStream()
-        recorder = new MediaRecorder(stream, {mimeType: "video/webm;codecs=vp9"})
+
+        recorder = null
+        for (const mimeType of ["video/webm;codecs=vp9", "video/webm;codecs=vp8"]) {
+          if (MediaRecorder.isTypeSupported(mimeType)) {
+            console.log(`MIME type ${mimeType} supported on this browser.`)
+            recorder = new MediaRecorder(stream, {mimeType: mimeType})
+            break
+          }
+        }
+
+        if (!recorder) {
+          console.error("Supported MIME type not found")
+          setEditorMessage("Recording not supported on this browser.")
+          return
+        }
 
         const chunks = []
         recorder.addEventListener("dataavailable", async e => {
@@ -127,7 +141,7 @@ window.onload = async () => {
               console.warn(e)
             }
 
-            const result = new Blob([converted], { type: "video/mp4" })
+            const result = new Blob([converted], {type: "video/mp4"})
             url = URL.createObjectURL(result)
             downloadLink.download = "bulletml-rec.mp4"
             downloadLink.href = url
@@ -138,6 +152,7 @@ window.onload = async () => {
             console.error(e)
             setEditorMessage(`Failed to convert video (maybe cannot work well on mobile devices): ${e}`)
           } finally {
+            recorder = null
             recordButton.removeAttribute("disabled")
             recordButton.textContent = "Record"
           }
