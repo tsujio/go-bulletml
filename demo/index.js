@@ -124,6 +124,11 @@ window.onload = async () => {
           try {
             const data = new Blob(chunks, {type: recorder.mimeType})
 
+            if (data.size === 0) {
+              setEditorMessage("Failed to record video (data have no length)")
+              return
+            }
+
             const buf = await data.arrayBuffer()
             const bin = new Uint8Array(buf)
             const ffmpeg = FFmpeg.createFFmpeg({
@@ -131,7 +136,7 @@ window.onload = async () => {
             })
             await ffmpeg.load()
             ffmpeg.FS("writeFile", "rec.webm", bin)
-            await ffmpeg.run("-i", "rec.webm", "-vcodec", "copy", "rec.mp4")
+            await ffmpeg.run("-i", "rec.webm", "-vcodec", "copy", "-an", "rec.mp4")
             const converted = ffmpeg.FS("readFile", "rec.mp4")
             try {
               ffmpeg.FS("unlink", "rec.webm")
@@ -141,13 +146,21 @@ window.onload = async () => {
               console.warn(e)
             }
 
-            const result = new Blob([converted], {type: "video/mp4"})
+            let result, filename
+            if (converted.length === 0) {
+              result = data
+              filename = "bulletml-rec.webm"
+              setEditorMessage("Failed to convert video to mp4, but you can download webm video.")
+            } else {
+              result = new Blob([converted], {type: "video/mp4"})
+              filename = "bulletml-rec.mp4"
+              setEditorMessage("")
+            }
+
             url = URL.createObjectURL(result)
-            downloadLink.download = "bulletml-rec.mp4"
+            downloadLink.download = filename
             downloadLink.href = url
             downloadLink.style.display = "inline"
-
-            setEditorMessage("")
           } catch (e) {
             console.error(e)
             setEditorMessage(`Failed to convert video (maybe cannot work well on mobile devices): ${e}`)
