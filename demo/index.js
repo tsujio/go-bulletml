@@ -97,16 +97,14 @@ window.onload = async () => {
         }
 
         e.currentTarget.value = result
+        e.currentTarget.selectionStart = e.currentTarget.selectionEnd = selectionEnd + result.length - value.length
 
-        let offset = 0
-        if (e.currentTarget.value.length < value.length) {
-          const col = selectionEnd - value.lastIndexOf("\n", selectionEnd - 1) - 1
-          if (col < tab.length) {
-            offset = tab.length - col
-          }
+        const origLineNum = (value.substring(0, selectionEnd).match(/\n/g) || []).length + 1
+        const newLineNum = (e.currentTarget.value.substring(0, e.currentTarget.selectionEnd).match(/\n/g) || []).length + 1
+        if (origLineNum !== newLineNum) {
+          const newLines = [...e.currentTarget.value.matchAll(/\n/g)]
+          e.currentTarget.selectionStart = e.currentTarget.selectionEnd = newLines[origLineNum - 2].index + 1
         }
-
-        e.currentTarget.selectionStart = e.currentTarget.selectionEnd = selectionEnd + result.length - value.length + offset
 
         return
       }
