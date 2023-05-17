@@ -1,9 +1,17 @@
 package bulletml
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
 	"io"
+	"math"
+	"strconv"
+	"strings"
 )
 
 type bulletmlError struct {
@@ -32,10 +40,6 @@ func (e *bulletmlError) Error() string {
 func Load(src io.Reader) (*BulletML, error) {
 	var b BulletML
 	if err := xml.NewDecoder(src).Decode(&b); err != nil {
-		return nil, err
-	}
-
-	if err := prepareNodeTree(&b); err != nil {
 		return nil, err
 	}
 
@@ -534,12 +538,19 @@ func (a *Accel) xmlName() string {
 }
 
 type Wait struct {
-	XMLName    xml.Name `xml:"wait"`
-	Expr       string   `xml:",chardata"`
-	parentNode node     `xml:"-"`
+	XMLName      xml.Name `xml:"wait"`
+	Expr         string   `xml:",chardata"`
+	compiledExpr ast.Expr `xml:"-"`
+	parentNode   node     `xml:"-"`
 }
 
 func (w *Wait) prepare() error {
+	compiled, err := compileExpr(w.Expr, w)
+	if err != nil {
+		return err
+	}
+	w.compiledExpr = compiled
+
 	return nil
 }
 
@@ -621,10 +632,11 @@ const (
 )
 
 type Direction struct {
-	XMLName    xml.Name      `xml:"direction"`
-	Type       DirectionType `xml:"type,attr"`
-	Expr       string        `xml:",chardata"`
-	parentNode node          `xml:"-"`
+	XMLName      xml.Name      `xml:"direction"`
+	Type         DirectionType `xml:"type,attr"`
+	Expr         string        `xml:",chardata"`
+	compiledExpr ast.Expr      `xml:"-"`
+	parentNode   node          `xml:"-"`
 }
 
 func (d *Direction) prepare() error {
@@ -634,6 +646,12 @@ func (d *Direction) prepare() error {
 	if !isIn(d.Type, []DirectionType{DirectionTypeAim, DirectionTypeAbsolute, DirectionTypeRelative, DirectionTypeSequence}) {
 		return newBulletmlError(fmt.Sprintf("Invalid 'type' attribute value of <%s> element: %s", d.XMLName.Local, d.Type), d)
 	}
+
+	compiled, err := compileExpr(d.Expr, d)
+	if err != nil {
+		return err
+	}
+	d.compiledExpr = compiled
 
 	return nil
 }
@@ -655,10 +673,11 @@ const (
 )
 
 type Speed struct {
-	XMLName    xml.Name  `xml:"speed"`
-	Type       SpeedType `xml:"type,attr"`
-	Expr       string    `xml:",chardata"`
-	parentNode node      `xml:"-"`
+	XMLName      xml.Name  `xml:"speed"`
+	Type         SpeedType `xml:"type,attr"`
+	Expr         string    `xml:",chardata"`
+	compiledExpr ast.Expr  `xml:"-"`
+	parentNode   node      `xml:"-"`
 }
 
 func (s *Speed) prepare() error {
@@ -668,6 +687,12 @@ func (s *Speed) prepare() error {
 	if !isIn(s.Type, []SpeedType{SpeedTypeAbsolute, SpeedTypeRelative, SpeedTypeSequence}) {
 		return newBulletmlError(fmt.Sprintf("Invalid 'type' attribute value of <%s> element: %s", s.XMLName.Local, s.Type), s)
 	}
+
+	compiled, err := compileExpr(s.Expr, s)
+	if err != nil {
+		return err
+	}
+	s.compiledExpr = compiled
 
 	return nil
 }
@@ -689,10 +714,11 @@ const (
 )
 
 type Horizontal struct {
-	XMLName    xml.Name       `xml:"horizontal"`
-	Type       HorizontalType `xml:"type,attr"`
-	Expr       string         `xml:",chardata"`
-	parentNode node           `xml:"-"`
+	XMLName      xml.Name       `xml:"horizontal"`
+	Type         HorizontalType `xml:"type,attr"`
+	Expr         string         `xml:",chardata"`
+	compiledExpr ast.Expr       `xml:"-"`
+	parentNode   node           `xml:"-"`
 }
 
 func (h *Horizontal) prepare() error {
@@ -702,6 +728,12 @@ func (h *Horizontal) prepare() error {
 	if !isIn(h.Type, []HorizontalType{HorizontalTypeAbsolute, HorizontalTypeRelative, HorizontalTypeSequence}) {
 		return newBulletmlError(fmt.Sprintf("Invalid 'type' attribute value of <%s> element: %s", h.XMLName.Local, h.Type), h)
 	}
+
+	compiled, err := compileExpr(h.Expr, h)
+	if err != nil {
+		return err
+	}
+	h.compiledExpr = compiled
 
 	return nil
 }
@@ -723,10 +755,11 @@ const (
 )
 
 type Vertical struct {
-	XMLName    xml.Name     `xml:"vertical"`
-	Type       VerticalType `xml:"type,attr"`
-	Expr       string       `xml:",chardata"`
-	parentNode node         `xml:"-"`
+	XMLName      xml.Name     `xml:"vertical"`
+	Type         VerticalType `xml:"type,attr"`
+	Expr         string       `xml:",chardata"`
+	compiledExpr ast.Expr     `xml:"-"`
+	parentNode   node         `xml:"-"`
 }
 
 func (v *Vertical) prepare() error {
@@ -736,6 +769,12 @@ func (v *Vertical) prepare() error {
 	if !isIn(v.Type, []VerticalType{VerticalTypeAbsolute, VerticalTypeRelative, VerticalTypeSequence}) {
 		return newBulletmlError(fmt.Sprintf("Invalid 'type' attribute value of <%s> element: %s", v.XMLName.Local, v.Type), v)
 	}
+
+	compiled, err := compileExpr(v.Expr, v)
+	if err != nil {
+		return err
+	}
+	v.compiledExpr = compiled
 
 	return nil
 }
@@ -749,12 +788,19 @@ func (v *Vertical) xmlName() string {
 }
 
 type Term struct {
-	XMLName    xml.Name `xml:"term"`
-	Expr       string   `xml:",chardata"`
-	parentNode node     `xml:"-"`
+	XMLName      xml.Name `xml:"term"`
+	Expr         string   `xml:",chardata"`
+	compiledExpr ast.Expr `xml:"-"`
+	parentNode   node     `xml:"-"`
 }
 
 func (t *Term) prepare() error {
+	compiled, err := compileExpr(t.Expr, t)
+	if err != nil {
+		return err
+	}
+	t.compiledExpr = compiled
+
 	return nil
 }
 
@@ -767,12 +813,19 @@ func (t *Term) xmlName() string {
 }
 
 type Times struct {
-	XMLName    xml.Name `xml:"times"`
-	Expr       string   `xml:",chardata"`
-	parentNode node     `xml:"-"`
+	XMLName      xml.Name `xml:"times"`
+	Expr         string   `xml:",chardata"`
+	compiledExpr ast.Expr `xml:"-"`
+	parentNode   node     `xml:"-"`
 }
 
 func (t *Times) prepare() error {
+	compiled, err := compileExpr(t.Expr, t)
+	if err != nil {
+		return err
+	}
+	t.compiledExpr = compiled
+
 	return nil
 }
 
@@ -899,12 +952,19 @@ func (f *FireRef) params() []Param {
 }
 
 type Param struct {
-	XMLName    xml.Name `xml:"param"`
-	Expr       string   `xml:",chardata"`
-	parentNode node     `xml:"-"`
+	XMLName      xml.Name `xml:"param"`
+	Expr         string   `xml:",chardata"`
+	compiledExpr ast.Expr `xml:"-"`
+	parentNode   node     `xml:"-"`
 }
 
 func (p *Param) prepare() error {
+	compiled, err := compileExpr(p.Expr, p)
+	if err != nil {
+		return err
+	}
+	p.compiledExpr = compiled
+
 	return nil
 }
 
@@ -925,4 +985,141 @@ type refType interface {
 	node
 	label() string
 	params() []Param
+}
+
+func compileExpr(expr string, node node) (ast.Expr, error) {
+	expr = strings.ReplaceAll(expr, "$", "V_")
+	expr = strings.ReplaceAll(expr, "V_loop.", "V_loop_")
+
+	root, err := parser.ParseExpr(expr)
+	if err != nil {
+		return nil, newBulletmlError(err.Error(), node)
+	}
+
+	return compileAst(root, node)
+}
+
+type numberValue struct {
+	ast.Expr
+	value float64
+}
+
+func compileAst(node ast.Expr, bmlNode node) (ast.Expr, error) {
+	switch e := node.(type) {
+	case *ast.BinaryExpr:
+		x, err := compileAst(e.X, bmlNode)
+		if err != nil {
+			return nil, err
+		}
+		y, err := compileAst(e.Y, bmlNode)
+		if err != nil {
+			return nil, err
+		}
+		xv, xok := x.(*numberValue)
+		yv, yok := y.(*numberValue)
+		if xok && yok {
+			switch e.Op {
+			case token.ADD:
+				return &numberValue{value: xv.value + yv.value}, nil
+			case token.SUB:
+				return &numberValue{value: xv.value - yv.value}, nil
+			case token.MUL:
+				return &numberValue{value: xv.value * yv.value}, nil
+			case token.QUO:
+				return &numberValue{value: xv.value / yv.value}, nil
+			case token.REM:
+				return &numberValue{value: float64(int64(xv.value) % int64(yv.value))}, nil
+			default:
+				return nil, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), bmlNode)
+			}
+		}
+
+		if xok {
+			e.X = xv
+		}
+		if yok {
+			e.Y = yv
+		}
+
+		return e, nil
+	case *ast.UnaryExpr:
+		x, err := compileAst(e.X, bmlNode)
+		if err != nil {
+			return nil, err
+		}
+		if xv, ok := x.(*numberValue); ok {
+			switch e.Op {
+			case token.SUB:
+				return &numberValue{value: -xv.value}, nil
+			default:
+				return nil, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), bmlNode)
+			}
+		} else {
+			return e, nil
+		}
+	case *ast.BasicLit:
+		switch e.Kind {
+		case token.FLOAT, token.INT:
+			v, err := strconv.ParseFloat(e.Value, 64)
+			if err != nil {
+				return nil, newBulletmlError(fmt.Sprintf("Invalid number value (%s): %s", err.Error(), e.Value), bmlNode)
+			}
+			return &numberValue{value: v}, nil
+		default:
+			return nil, newBulletmlError(fmt.Sprintf("Unsupported literal: %s", e.Value), bmlNode)
+		}
+	case *ast.Ident:
+		name := e.Name
+		name = strings.ReplaceAll(name, "V_loop_", "V_loop.")
+		name = strings.ReplaceAll(name, "V_", "$")
+		e.Name = name
+		return e, nil
+	case *ast.CallExpr:
+		f, ok := e.Fun.(*ast.Ident)
+		if !ok {
+			var buf bytes.Buffer
+			if err := format.Node(&buf, token.NewFileSet(), e.Fun); err != nil {
+				return nil, newBulletmlError(err.Error(), bmlNode)
+			}
+			return nil, newBulletmlError(fmt.Sprintf("Unsupported function: %s", string(buf.Bytes())), bmlNode)
+		}
+
+		var args []float64
+		for i, arg := range e.Args {
+			a, err := compileAst(arg, bmlNode)
+			if err != nil {
+				return nil, err
+			}
+			e.Args[i] = a
+			if v, ok := a.(*numberValue); ok {
+				args = append(args, v.value)
+			}
+		}
+		if len(args) != len(e.Args) {
+			return e, nil
+		}
+
+		switch f.Name {
+		case "sin":
+			if len(args) < 1 {
+				return nil, newBulletmlError(fmt.Sprintf("Too few arguments for sin(): %d", len(args)), bmlNode)
+			}
+			return &numberValue{value: math.Sin(args[0])}, nil
+		case "cos":
+			if len(args) < 1 {
+				return nil, newBulletmlError(fmt.Sprintf("Too few arguments for cos(): %d", len(args)), bmlNode)
+			}
+			return &numberValue{value: math.Cos(args[0])}, nil
+		default:
+			return e, nil
+		}
+	case *ast.ParenExpr:
+		return compileAst(e.X, bmlNode)
+	default:
+		var buf bytes.Buffer
+		if err := format.Node(&buf, token.NewFileSet(), node); err != nil {
+			return nil, err
+		}
+		return nil, newBulletmlError(fmt.Sprintf("Unsupported expression: %s", string(buf.Bytes())), bmlNode)
+	}
 }
