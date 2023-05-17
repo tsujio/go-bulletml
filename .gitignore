@@ -4,3 +4,4 @@
 *.log
 .firebase
 .firebaserc
+!demo/thirdparty/**
