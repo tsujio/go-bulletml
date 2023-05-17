@@ -1,4 +1,5 @@
 window.onload = async () => {
+  const title = document.querySelector("#title")
   const iframe = document.querySelector("#simulator-iframe")
   const textarea = document.querySelector("#bulletml-textarea")
   const applyButton = document.querySelector("#apply-button")
@@ -7,6 +8,10 @@ window.onload = async () => {
   const downloadLink = document.querySelector("#download-link")
   const sampleSelector = document.querySelector("#sample-selector")
   const editorMessage = document.querySelector("#editor-message")
+
+  title.addEventListener("click", () => {
+    document.location.href = new URL("/", document.location).href
+  })
 
   const setEditorMessage = message => {
     editorMessage.textContent = message
@@ -218,7 +223,9 @@ window.onload = async () => {
         return
       }
 
-      const url = `${location.origin}${location.pathname}?id=${id}`
+      const u = new URL("/", document.location)
+      u.searchParams.set("id", id)
+      const url = u.href
 
       const selectorId = sampleSelector.getAttribute("id")
       const parent = sampleSelector.parentElement
