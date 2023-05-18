@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
-<bulletml type="vertical"
-          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+<!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
+<bulletml type="vertical" xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
     <fire label="shoot">
         <direction type="absolute">$1</direction>
         <speed type="absolute">3</speed>

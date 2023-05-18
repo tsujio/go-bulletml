@@ -29,6 +29,7 @@ The BulletML specifications are [here](http://www.asahi-net.or.jp/~cs8k-cyu/bull
 
 ```xml
 <?xml version="1.0" ?>
+<!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
 <bulletml type="vertical" xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
     <action label="top">
         <repeat>
