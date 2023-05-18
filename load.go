@@ -50,14 +50,6 @@ func prepareNodeTree(b *BulletML) error {
 	return b.prepare()
 }
 
-func decodeElement[T any](d *xml.Decoder, start *xml.StartElement) (T, error) {
-	var v T
-	if err := d.DecodeElement(&v, start); err != nil {
-		return v, err
-	}
-	return v, nil
-}
-
 func isIn[T comparable](v T, target []T) bool {
 	for _, t := range target {
 		if v == t {
@@ -197,29 +189,29 @@ func (b *Bullet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		if s, ok := token.(xml.StartElement); ok {
 			switch s.Name.Local {
 			case "direction":
-				if d, err := decodeElement[Direction](d, &s); err != nil {
+				var dir Direction
+				if err := d.DecodeElement(&dir, &s); err != nil {
 					return err
-				} else {
-					b.Direction = &d
 				}
+				b.Direction = &dir
 			case "speed":
-				if sp, err := decodeElement[Speed](d, &s); err != nil {
+				var spd Speed
+				if err := d.DecodeElement(&spd, &s); err != nil {
 					return err
-				} else {
-					b.Speed = &sp
 				}
+				b.Speed = &spd
 			case "action":
-				if a, err := decodeElement[Action](d, &s); err != nil {
+				var a Action
+				if err := d.DecodeElement(&a, &s); err != nil {
 					return err
-				} else {
-					b.ActionOrRefs = append(b.ActionOrRefs, a)
 				}
+				b.ActionOrRefs = append(b.ActionOrRefs, a)
 			case "actionRef":
-				if a, err := decodeElement[ActionRef](d, &s); err != nil {
+				var a ActionRef
+				if err := d.DecodeElement(&a, &s); err != nil {
 					return err
-				} else {
-					b.ActionOrRefs = append(b.ActionOrRefs, a)
 				}
+				b.ActionOrRefs = append(b.ActionOrRefs, a)
 			default:
 				return fmt.Errorf("Unexpected element <%s> in <bullet>", s.Name.Local)
 			}
@@ -333,53 +325,70 @@ func (a *Action) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			return err
 		}
 		if s, ok := token.(xml.StartElement); ok {
-			var e any
 			switch s.Name.Local {
 			case "repeat":
-				if e, err = decodeElement[Repeat](d, &s); err != nil {
+				var r Repeat
+				if err := d.DecodeElement(&r, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, r)
 			case "fire":
-				if e, err = decodeElement[Fire](d, &s); err != nil {
+				var f Fire
+				if err := d.DecodeElement(&f, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, f)
 			case "fireRef":
-				if e, err = decodeElement[FireRef](d, &s); err != nil {
+				var f FireRef
+				if err := d.DecodeElement(&f, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, f)
 			case "changeSpeed":
-				if e, err = decodeElement[ChangeSpeed](d, &s); err != nil {
+				var c ChangeSpeed
+				if err := d.DecodeElement(&c, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, c)
 			case "changeDirection":
-				if e, err = decodeElement[ChangeDirection](d, &s); err != nil {
+				var c ChangeDirection
+				if err := d.DecodeElement(&c, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, c)
 			case "accel":
-				if e, err = decodeElement[Accel](d, &s); err != nil {
+				var ac Accel
+				if err := d.DecodeElement(&ac, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, ac)
 			case "wait":
-				if e, err = decodeElement[Wait](d, &s); err != nil {
+				var w Wait
+				if err := d.DecodeElement(&w, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, w)
 			case "vanish":
-				if e, err = decodeElement[Vanish](d, &s); err != nil {
+				var v Vanish
+				if err := d.DecodeElement(&v, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, v)
 			case "action":
-				if e, err = decodeElement[Action](d, &s); err != nil {
+				var ac Action
+				if err := d.DecodeElement(&ac, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, ac)
 			case "actionRef":
-				if e, err = decodeElement[ActionRef](d, &s); err != nil {
+				var ac ActionRef
+				if err := d.DecodeElement(&ac, &s); err != nil {
 					return err
 				}
+				a.Commands = append(a.Commands, ac)
 			default:
 				return fmt.Errorf("Unexpected element <%s> in <action>", s.Name.Local)
 			}
-
-			a.Commands = append(a.Commands, e)
 		}
 	}
 
@@ -413,6 +422,9 @@ func (f *Fire) prepare() error {
 
 	if f.Bullet != nil && f.BulletRef != nil {
 		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", f.Bullet.XMLName.Local, f.BulletRef.XMLName.Local, f.XMLName.Local), f)
+	}
+	if f.Bullet == nil && f.BulletRef == nil {
+		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", f.Bullet.XMLName.Local, f.BulletRef.XMLName.Local, f.XMLName.Local), f)
 	}
 
 	if f.Bullet != nil {
@@ -595,6 +607,9 @@ func (r *Repeat) prepare() error {
 
 	if r.Action != nil && r.ActionRef != nil {
 		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", r.Action.XMLName.Local, r.ActionRef.XMLName.Local, r.XMLName.Local), r)
+	}
+	if r.Action == nil && r.ActionRef == nil {
+		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", r.Action.XMLName.Local, r.ActionRef.XMLName.Local, r.XMLName.Local), r)
 	}
 
 	if r.Action != nil {
@@ -1104,12 +1119,14 @@ func compileAst(node ast.Expr, bmlNode node) (ast.Expr, error) {
 			if len(args) < 1 {
 				return nil, newBulletmlError(fmt.Sprintf("Too few arguments for sin(): %d", len(args)), bmlNode)
 			}
-			return &numberValue{value: math.Sin(args[0])}, nil
+			arg := args[0] * math.Pi / 180
+			return &numberValue{value: math.Sin(arg)}, nil
 		case "cos":
 			if len(args) < 1 {
 				return nil, newBulletmlError(fmt.Sprintf("Too few arguments for cos(): %d", len(args)), bmlNode)
 			}
-			return &numberValue{value: math.Cos(args[0])}, nil
+			arg := args[0] * math.Pi / 180
+			return &numberValue{value: math.Cos(arg)}, nil
 		default:
 			return e, nil
 		}

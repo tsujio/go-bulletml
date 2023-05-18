@@ -336,8 +336,10 @@ You can use these functions in expressions.
 - `sin`
 - `cos`
 
+**`sin` and `cos` interprets the argument as degrees, not radian.**
+
 ```xml
-<direction>sin($loop.index / 10)</direction>
+<direction>sin($loop.index * 180 / 3.14)</direction>
 ```
 
 # References

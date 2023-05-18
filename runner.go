@@ -700,12 +700,14 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (
 			if len(args) < 1 {
 				return 0, newBulletmlError(fmt.Sprintf("Too few arguments for sin(): %d", len(args)), node)
 			}
-			return math.Sin(args[0]), nil
+			arg := args[0] * math.Pi / 180
+			return math.Sin(arg), nil
 		case "cos":
 			if len(args) < 1 {
 				return 0, newBulletmlError(fmt.Sprintf("Too few arguments for cos(): %d", len(args)), node)
 			}
-			return math.Cos(args[0]), nil
+			arg := args[0] * math.Pi / 180
+			return math.Cos(arg), nil
 		default:
 			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", f.Name), node)
 		}
