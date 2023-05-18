@@ -12,6 +12,10 @@ You can play a BulletML web simulator from [here](https://bulletml.tsujio.org).
 
 # Usage
 
+## API Reference
+
+https://pkg.go.dev/github.com/tsujio/go-bulletml
+
 ## 1. Write BulletML source
 
 The BulletML specifications are [here](http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml_ref_e.html)
