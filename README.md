@@ -309,7 +309,7 @@ You can use loop variables in `<repeat>` elements.
 </repeat>
 ```
 
-## Bullet states
+## Bullet state variables
 
 - `$direction`
     - Current bullet direction
@@ -320,16 +320,16 @@ You can use loop variables in `<repeat>` elements.
 <action>
     <changeDirection>
         <term>1</term>
-        <direction type="absolute">360 * $rand</direction>
+        <direction type="aim">10 * $rand - 5</direction>
     </changeDirection>
     <changeSpeed>
         <term>1</term>
-        <speed type="absolute">5 * $rand</speed>
+        <speed type="sequence">2 * $rand</speed>
     </changeSpeed>
     <wait>1</wait>
     <fireRef label="fire">
-        <param>$direction</param> <!-- $direction is the result of `360 * $rand` -->
-        <param>$speed</param> <!-- $direction is the result of `5 * $rand` -->
+        <param>$direction</param> <!-- $direction is the result of `<direction type="aim">10 * $rand - 5</direction>` -->
+        <param>$speed</param> <!-- $speed is the result of `<speed type="sequence">2 * $rand</speed>` -->
     </fireRef>
 </action>
 ```
@@ -341,7 +341,9 @@ You can use these functions in expressions.
 - `sin`
 - `cos`
 
-**`sin` and `cos` interprets the argument as degrees, not radian.**
+> **Important**
+> 
+> **`sin` and `cos` interprets the argument as degrees, not radian.**
 
 ```xml
 <direction>sin($loop.index * 180 / 3.14)</direction>
