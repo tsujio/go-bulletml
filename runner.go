@@ -13,29 +13,59 @@ import (
 	"time"
 )
 
+// Runner runs BulletML.
 type Runner interface {
+	// Update updates runner state. It should be called in every loop.
 	Update() error
 }
 
+// BulletRunner runs BulletML and updates the state of a bullet.
 type BulletRunner interface {
 	Runner
+
+	// Position returns the bullet position (x, y).
 	Position() (float64, float64)
+
+	// Vanished returns whether the bullet has vanished or not.
 	Vanished() bool
 }
 
+// FireContext contains context data of fire.
 type FireContext struct{}
 
+// NewRunnerOptions contains options for NewRunner function.
 type NewRunnerOptions struct {
-	OnBulletFired         func(BulletRunner, *FireContext)
-	CurrentShootPosition  func() (float64, float64)
+	// [Required] OnBulletFired is called when a bullet is fired.
+	OnBulletFired func(BulletRunner, *FireContext)
+
+	// [Required] CurrentShootPosition tells the runner where the shooter is.
+	CurrentShootPosition func() (float64, float64)
+
+	// [Required] CurrentTargetPosition tells the runner where the player is.
 	CurrentTargetPosition func() (float64, float64)
-	DefaultBulletSpeed    float64
-	Random                *rand.Rand
-	Rank                  float64
+
+	// DefaultBulletSpeed is the default value of bullet speed. 1.0 is used if not specified.
+	DefaultBulletSpeed float64
+
+	// Random is used as a random generator in the runner.
+	Random *rand.Rand
+
+	// Rank is the value for $rank.
+	Rank float64
 }
 
+// NewRunner creates a new Runner.
 func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 	_opts := *opts
+	if _opts.OnBulletFired == nil {
+		return nil, errors.New("OnBulletFired is required")
+	}
+	if _opts.CurrentShootPosition == nil {
+		return nil, errors.New("CurrentShootPosition is required")
+	}
+	if _opts.CurrentTargetPosition == nil {
+		return nil, errors.New("CurrentTargetPosition is required")
+	}
 	if _opts.DefaultBulletSpeed == 0 {
 		_opts.DefaultBulletSpeed = 1.0
 	}

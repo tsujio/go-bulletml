@@ -37,6 +37,7 @@ func (e *bulletmlError) Error() string {
 	return fmt.Sprintf("%s (in %s)", e.text, buf)
 }
 
+// Load loads data from src and returns BulletML object.
 func Load(src io.Reader) (*BulletML, error) {
 	var b BulletML
 	if err := xml.NewDecoder(src).Decode(&b); err != nil {
