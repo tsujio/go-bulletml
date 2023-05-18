@@ -333,11 +333,11 @@ func (p *actionProcess) pushStack(action *Action, params parameters) {
 type parameters map[string]float64
 
 type actionProcessFrame struct {
-	action        *Action
-	actionIndex   int
-	repeatIndex   int
-	params        parameters
-	actionProcess *actionProcess
+	action                   *Action
+	actionIndex              int
+	repeatIndex, repeatCount int
+	params                   parameters
+	actionProcess            *actionProcess
 }
 
 var (
@@ -349,9 +349,12 @@ func (f *actionProcessFrame) update() error {
 	for f.actionIndex < len(f.action.Commands) {
 		switch c := f.action.Commands[f.actionIndex].(type) {
 		case Repeat:
-			repeat, err := evaluateExpr(c.Times.compiledExpr, f.params, &c.Times, f.actionProcess.runner)
-			if err != nil {
-				return err
+			if f.repeatIndex == 0 {
+				repeat, err := evaluateExpr(c.Times.compiledExpr, f.params, &c.Times, f.actionProcess.runner)
+				if err != nil {
+					return err
+				}
+				f.repeatCount = int(repeat)
 			}
 
 			action, params, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
@@ -364,7 +367,7 @@ func (f *actionProcessFrame) update() error {
 				prms[k] = v
 			}
 
-			if f.repeatIndex < int(repeat) {
+			if f.repeatIndex < f.repeatCount {
 				prms["$loop.index"] = float64(f.repeatIndex)
 
 				f.actionProcess.pushStack(action, prms)
