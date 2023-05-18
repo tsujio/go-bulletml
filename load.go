@@ -107,11 +107,11 @@ func (b *BulletML) prepare() error {
 	return nil
 }
 
-func (b *BulletML) parent() node {
+func (b BulletML) parent() node {
 	return nil
 }
 
-func (b *BulletML) xmlName() string {
+func (b BulletML) xmlName() string {
 	return b.XMLName.Local
 }
 
@@ -161,11 +161,11 @@ func (b *Bullet) prepare() error {
 	return nil
 }
 
-func (b *Bullet) parent() node {
+func (b Bullet) parent() node {
 	return b.parentNode
 }
 
-func (b *Bullet) xmlName() string {
+func (b Bullet) xmlName() string {
 	return b.XMLName.Local
 }
 
@@ -299,11 +299,11 @@ func (a *Action) prepare() error {
 	return nil
 }
 
-func (a *Action) parent() node {
+func (a Action) parent() node {
 	return a.parentNode
 }
 
-func (a *Action) xmlName() string {
+func (a Action) xmlName() string {
 	return a.XMLName.Local
 }
 
@@ -444,11 +444,11 @@ func (f *Fire) prepare() error {
 	return nil
 }
 
-func (f *Fire) parent() node {
+func (f Fire) parent() node {
 	return f.parentNode
 }
 
-func (f *Fire) xmlName() string {
+func (f Fire) xmlName() string {
 	return f.XMLName.Local
 }
 
@@ -473,11 +473,11 @@ func (c *ChangeDirection) prepare() error {
 	return nil
 }
 
-func (c *ChangeDirection) parent() node {
+func (c ChangeDirection) parent() node {
 	return c.parentNode
 }
 
-func (c *ChangeDirection) xmlName() string {
+func (c ChangeDirection) xmlName() string {
 	return c.XMLName.Local
 }
 
@@ -502,11 +502,11 @@ func (c *ChangeSpeed) prepare() error {
 	return nil
 }
 
-func (c *ChangeSpeed) parent() node {
+func (c ChangeSpeed) parent() node {
 	return c.parentNode
 }
 
-func (c *ChangeSpeed) xmlName() string {
+func (c ChangeSpeed) xmlName() string {
 	return c.XMLName.Local
 }
 
@@ -541,11 +541,11 @@ func (a *Accel) prepare() error {
 	return nil
 }
 
-func (a *Accel) parent() node {
+func (a Accel) parent() node {
 	return a.parentNode
 }
 
-func (a *Accel) xmlName() string {
+func (a Accel) xmlName() string {
 	return a.XMLName.Local
 }
 
@@ -566,11 +566,11 @@ func (w *Wait) prepare() error {
 	return nil
 }
 
-func (w *Wait) parent() node {
+func (w Wait) parent() node {
 	return w.parentNode
 }
 
-func (w *Wait) xmlName() string {
+func (w Wait) xmlName() string {
 	return w.XMLName.Local
 }
 
@@ -583,11 +583,11 @@ func (v *Vanish) prepare() error {
 	return nil
 }
 
-func (v *Vanish) parent() node {
+func (v Vanish) parent() node {
 	return v.parentNode
 }
 
-func (v *Vanish) xmlName() string {
+func (v Vanish) xmlName() string {
 	return v.XMLName.Local
 }
 
@@ -629,11 +629,11 @@ func (r *Repeat) prepare() error {
 	return nil
 }
 
-func (r *Repeat) parent() node {
+func (r Repeat) parent() node {
 	return r.parentNode
 }
 
-func (r *Repeat) xmlName() string {
+func (r Repeat) xmlName() string {
 	return r.XMLName.Local
 }
 
@@ -671,11 +671,11 @@ func (d *Direction) prepare() error {
 	return nil
 }
 
-func (d *Direction) parent() node {
+func (d Direction) parent() node {
 	return d.parentNode
 }
 
-func (d *Direction) xmlName() string {
+func (d Direction) xmlName() string {
 	return d.XMLName.Local
 }
 
@@ -712,11 +712,11 @@ func (s *Speed) prepare() error {
 	return nil
 }
 
-func (s *Speed) parent() node {
+func (s Speed) parent() node {
 	return s.parentNode
 }
 
-func (s *Speed) xmlName() string {
+func (s Speed) xmlName() string {
 	return s.XMLName.Local
 }
 
@@ -753,11 +753,11 @@ func (h *Horizontal) prepare() error {
 	return nil
 }
 
-func (h *Horizontal) parent() node {
+func (h Horizontal) parent() node {
 	return h.parentNode
 }
 
-func (h *Horizontal) xmlName() string {
+func (h Horizontal) xmlName() string {
 	return h.XMLName.Local
 }
 
@@ -794,11 +794,11 @@ func (v *Vertical) prepare() error {
 	return nil
 }
 
-func (v *Vertical) parent() node {
+func (v Vertical) parent() node {
 	return v.parentNode
 }
 
-func (v *Vertical) xmlName() string {
+func (v Vertical) xmlName() string {
 	return v.XMLName.Local
 }
 
@@ -819,11 +819,11 @@ func (t *Term) prepare() error {
 	return nil
 }
 
-func (t *Term) parent() node {
+func (t Term) parent() node {
 	return t.parentNode
 }
 
-func (t *Term) xmlName() string {
+func (t Term) xmlName() string {
 	return t.XMLName.Local
 }
 
@@ -844,11 +844,11 @@ func (t *Times) prepare() error {
 	return nil
 }
 
-func (t *Times) parent() node {
+func (t Times) parent() node {
 	return t.parentNode
 }
 
-func (t *Times) xmlName() string {
+func (t Times) xmlName() string {
 	return t.XMLName.Local
 }
 
@@ -874,19 +874,19 @@ func (b *BulletRef) prepare() error {
 	return nil
 }
 
-func (b *BulletRef) parent() node {
+func (b BulletRef) parent() node {
 	return b.parentNode
 }
 
-func (b *BulletRef) xmlName() string {
+func (b BulletRef) xmlName() string {
 	return b.XMLName.Local
 }
 
-func (b *BulletRef) label() string {
+func (b BulletRef) label() string {
 	return b.Label
 }
 
-func (b *BulletRef) params() []Param {
+func (b BulletRef) params() []Param {
 	return b.Params
 }
 
@@ -912,19 +912,19 @@ func (a *ActionRef) prepare() error {
 	return nil
 }
 
-func (a *ActionRef) parent() node {
+func (a ActionRef) parent() node {
 	return a.parentNode
 }
 
-func (a *ActionRef) xmlName() string {
+func (a ActionRef) xmlName() string {
 	return a.XMLName.Local
 }
 
-func (a *ActionRef) label() string {
+func (a ActionRef) label() string {
 	return a.Label
 }
 
-func (a *ActionRef) params() []Param {
+func (a ActionRef) params() []Param {
 	return a.Params
 }
 
@@ -950,19 +950,19 @@ func (f *FireRef) prepare() error {
 	return nil
 }
 
-func (f *FireRef) parent() node {
+func (f FireRef) parent() node {
 	return f.parentNode
 }
 
-func (f *FireRef) xmlName() string {
+func (f FireRef) xmlName() string {
 	return f.XMLName.Local
 }
 
-func (f *FireRef) label() string {
+func (f FireRef) label() string {
 	return f.Label
 }
 
-func (f *FireRef) params() []Param {
+func (f FireRef) params() []Param {
 	return f.Params
 }
 
@@ -983,11 +983,11 @@ func (p *Param) prepare() error {
 	return nil
 }
 
-func (p *Param) parent() node {
+func (p Param) parent() node {
 	return p.parentNode
 }
 
-func (p *Param) xmlName() string {
+func (p Param) xmlName() string {
 	return p.XMLName.Local
 }
 

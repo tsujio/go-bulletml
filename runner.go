@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"math"
 	"math/rand"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -132,16 +131,53 @@ func (r *runner) createActionProcess(action *Action, params parameters) *actionP
 	return p
 }
 
-func (r *runner) lookUpBulletDefTable(ref *BulletRef, params parameters) (*Bullet, parameters, error) {
-	return lookUpDefTable(ref, r.bulletDefTable, params, r)
+func (r *runner) lookUpBulletDefTable(node node, params parameters) (*Bullet, parameters, error) {
+	if b, ok := node.(Bullet); ok {
+		return &b, params, nil
+	} else if b, ok := node.(*Bullet); ok {
+		return b, params, nil
+	} else if b, ok := node.(BulletRef); ok {
+		return lookUpDefTable(&b, r.bulletDefTable, params, r)
+	} else if b, ok := node.(*BulletRef); ok {
+		return lookUpDefTable(b, r.bulletDefTable, params, r)
+	} else {
+		return nil, nil, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
+	}
 }
 
-func (r *runner) lookUpActionDefTable(ref *ActionRef, params parameters) (*Action, parameters, error) {
-	return lookUpDefTable(ref, r.actionDefTable, params, r)
+func (r *runner) lookUpActionDefTable(node node, params parameters) (*Action, parameters, error) {
+	if a, ok := node.(Action); ok {
+		return &a, params, nil
+	} else if a, ok := node.(*Action); ok {
+		return a, params, nil
+	} else if a, ok := node.(ActionRef); ok {
+		return lookUpDefTable(&a, r.actionDefTable, params, r)
+	} else if a, ok := node.(*ActionRef); ok {
+		return lookUpDefTable(a, r.actionDefTable, params, r)
+	} else {
+		return nil, nil, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
+	}
 }
 
-func (r *runner) lookUpFireDefTable(ref *FireRef, params parameters) (*Fire, parameters, error) {
-	return lookUpDefTable(ref, r.fireDefTable, params, r)
+func (r *runner) lookUpFireDefTable(node node, params parameters) (*Fire, parameters, error) {
+	if f, ok := node.(Fire); ok {
+		return &f, params, nil
+	} else if f, ok := node.(*Fire); ok {
+		return f, params, nil
+	} else if f, ok := node.(FireRef); ok {
+		return lookUpDefTable(&f, r.fireDefTable, params, r)
+	} else if f, ok := node.(*FireRef); ok {
+		return lookUpDefTable(f, r.fireDefTable, params, r)
+	} else {
+		return nil, nil, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
+	}
+}
+
+func coalesce[T, U any](x *T, y *U) any {
+	if x != nil {
+		return x
+	}
+	return y
 }
 
 func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params parameters, runner *runner) (*T, parameters, error) {
@@ -244,7 +280,10 @@ func (p *actionProcess) update() error {
 
 	p.ticks++
 
-	if len(p.stack) == 0 && p.ticks >= p.changeSpeedUntil && p.ticks >= p.changeDirectionUntil {
+	if len(p.stack) == 0 &&
+		p.ticks > p.waitUntil &&
+		p.ticks > p.changeSpeedUntil &&
+		p.ticks > p.changeDirectionUntil {
 		return actionProcessEnd
 	}
 
@@ -285,18 +324,9 @@ func (f *actionProcessFrame) update() error {
 				return err
 			}
 
-			var action *Action
-			var params parameters
-			if c.Action != nil {
-				action = c.Action
-				params = f.params
-			} else if c.ActionRef != nil {
-				action, params, err = f.actionProcess.runner.lookUpActionDefTable(c.ActionRef, f.params)
-				if err != nil {
-					return err
-				}
-			} else {
-				return newBulletmlError(fmt.Sprintf("No action in <%s> element", c.XMLName.Local), &c)
+			action, params, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
+			if err != nil {
+				return err
 			}
 
 			prms := make(parameters)
@@ -316,30 +346,15 @@ func (f *actionProcessFrame) update() error {
 				f.repeatIndex = 0
 			}
 		case Fire, FireRef:
-			var err error
-			var fire *Fire
-			var params parameters
-			if fr, ok := c.(Fire); ok {
-				fire = &fr
-				params = f.params
-			} else if r, ok := c.(FireRef); ok {
-				fire, params, err = f.actionProcess.runner.lookUpFireDefTable(&r, f.params)
-				if err != nil {
-					return err
-				}
+			fire, params, err := f.actionProcess.runner.lookUpFireDefTable(c.(node), f.params)
+			if err != nil {
+				return err
 			}
 			fireParams := params
 
-			var bullet *Bullet
-			if fire.Bullet != nil {
-				bullet = fire.Bullet
-			} else if fire.BulletRef != nil {
-				bullet, params, err = f.actionProcess.runner.lookUpBulletDefTable(fire.BulletRef, params)
-				if err != nil {
-					return err
-				}
-			} else {
-				return newBulletmlError(fmt.Sprintf("No bullet in <%s> element", fire.XMLName.Local), fire)
+			bullet, params, err := f.actionProcess.runner.lookUpBulletDefTable(coalesce(fire.Bullet, fire.BulletRef).(node), params)
+			if err != nil {
+				return err
 			}
 			bulletParams := params
 
@@ -432,19 +447,9 @@ func (f *actionProcessFrame) update() error {
 
 			p := bulletRunner.createActionProcess(nil, nil)
 			for i := len(bullet.ActionOrRefs) - 1; i >= 0; i-- {
-				var action *Action
-				var actionParams parameters
-				switch a := bullet.ActionOrRefs[i].(type) {
-				case Action:
-					action = &a
-					actionParams = params
-				case ActionRef:
-					action, actionParams, err = f.actionProcess.runner.lookUpActionDefTable(&a, params)
-					if err != nil {
-						return err
-					}
-				default:
-					return newBulletmlError(fmt.Sprintf("Invalid child element of <%s>: %T", bullet.XMLName.Local, a), bullet)
+				action, actionParams, err := f.actionProcess.runner.lookUpActionDefTable(bullet.ActionOrRefs[i].(node), params)
+				if err != nil {
+					return err
 				}
 
 				p.pushStack(action, actionParams)
@@ -584,17 +589,9 @@ func (f *actionProcessFrame) update() error {
 		case Vanish:
 			f.actionProcess.runner.bullet.vanished = true
 		case Action, ActionRef:
-			var action *Action
-			var params parameters
-			if a, ok := c.(Action); ok {
-				action = &a
-				params = f.params
-			} else if r, ok := c.(ActionRef); ok {
-				var err error
-				action, params, err = f.actionProcess.runner.lookUpActionDefTable(&r, f.params)
-				if err != nil {
-					return err
-				}
+			action, params, err := f.actionProcess.runner.lookUpActionDefTable(c.(node), f.params)
+			if err != nil {
+				return err
 			}
 
 			f.actionProcess.pushStack(action, params)
@@ -609,11 +606,6 @@ func (f *actionProcessFrame) update() error {
 
 	return actionProcessFrameEnd
 }
-
-var (
-	variableRegexp = regexp.MustCompile(`\$(\d+|rand|rank|loop\.index)`)
-	funcRegexp     = regexp.MustCompile(`(sin|cos)\([^\)]+\)`)
-)
 
 func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (float64, error) {
 	switch e := expr.(type) {
@@ -661,14 +653,22 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (
 			return runner.opts.Rank, nil
 		case "$direction":
 			b := runner.bullet
-			vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
-			vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
-			return math.Atan2(vy, vx)*180/math.Pi + 90, nil
+			if b.accelSpeedHorizontal == 0 && b.accelSpeedVertical == 0 {
+				return b.direction*180/math.Pi + 90, nil
+			} else {
+				vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
+				vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
+				return math.Atan2(vy, vx)*180/math.Pi + 90, nil
+			}
 		case "$speed":
 			b := runner.bullet
-			vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
-			vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
-			return math.Sqrt(vx*vx + vy*vy), nil
+			if b.accelSpeedHorizontal == 0 && b.accelSpeedVertical == 0 {
+				return b.speed, nil
+			} else {
+				vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
+				vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
+				return math.Sqrt(vx*vx + vy*vy), nil
+			}
 		default:
 			if v, exists := params[e.Name]; exists {
 				return v, nil
