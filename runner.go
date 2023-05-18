@@ -51,7 +51,9 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 	runner := &runner{
 		bulletML: bulletML,
 		opts:     &_opts,
-		bullet:   &bulletModel{},
+		bullet: &bulletModel{
+			speed: _opts.DefaultBulletSpeed,
+		},
 		updateBulletPosition: func(r *runner) {
 			x, y := r.opts.CurrentShootPosition()
 			r.bullet.x = x
@@ -131,18 +133,18 @@ func (r *runner) createActionProcess(action *Action, params parameters) *actionP
 }
 
 func (r *runner) lookUpBulletDefTable(ref *BulletRef, params parameters) (*Bullet, parameters, error) {
-	return lookUpDefTable(ref, r.bulletDefTable, params, r.opts)
+	return lookUpDefTable(ref, r.bulletDefTable, params, r)
 }
 
 func (r *runner) lookUpActionDefTable(ref *ActionRef, params parameters) (*Action, parameters, error) {
-	return lookUpDefTable(ref, r.actionDefTable, params, r.opts)
+	return lookUpDefTable(ref, r.actionDefTable, params, r)
 }
 
 func (r *runner) lookUpFireDefTable(ref *FireRef, params parameters) (*Fire, parameters, error) {
-	return lookUpDefTable(ref, r.fireDefTable, params, r.opts)
+	return lookUpDefTable(ref, r.fireDefTable, params, r)
 }
 
-func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params parameters, opts *NewRunnerOptions) (*T, parameters, error) {
+func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params parameters, runner *runner) (*T, parameters, error) {
 	t, exists := table[ref.label()]
 	if !exists {
 		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.xmlName(), ref.label()), ref)
@@ -150,7 +152,7 @@ func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params paramet
 
 	refParams := make(parameters)
 	for i, p := range ref.params() {
-		v, err := evaluateExpr(p.compiledExpr, params, &p, opts)
+		v, err := evaluateExpr(p.compiledExpr, params, &p, runner)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -278,7 +280,7 @@ func (f *actionProcessFrame) update() error {
 	for f.actionIndex < len(f.action.Commands) {
 		switch c := f.action.Commands[f.actionIndex].(type) {
 		case Repeat:
-			repeat, err := evaluateExpr(c.Times.compiledExpr, f.params, &c.Times, f.actionProcess.runner.opts)
+			repeat, err := evaluateExpr(c.Times.compiledExpr, f.params, &c.Times, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -347,12 +349,12 @@ func (f *actionProcessFrame) update() error {
 			var dir float64
 			d := fire.Direction
 			if d != nil {
-				dir, err = evaluateExpr(d.compiledExpr, fireParams, d, f.actionProcess.runner.opts)
+				dir, err = evaluateExpr(d.compiledExpr, fireParams, d, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
 			} else if d = bullet.Direction; d != nil {
-				dir, err = evaluateExpr(d.compiledExpr, bulletParams, d, f.actionProcess.runner.opts)
+				dir, err = evaluateExpr(d.compiledExpr, bulletParams, d, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -380,12 +382,12 @@ func (f *actionProcessFrame) update() error {
 			var speed float64
 			s := fire.Speed
 			if s != nil {
-				speed, err = evaluateExpr(s.compiledExpr, fireParams, s, f.actionProcess.runner.opts)
+				speed, err = evaluateExpr(s.compiledExpr, fireParams, s, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
 			} else if s = bullet.Speed; s != nil {
-				speed, err = evaluateExpr(s.compiledExpr, bulletParams, s, f.actionProcess.runner.opts)
+				speed, err = evaluateExpr(s.compiledExpr, bulletParams, s, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -453,12 +455,12 @@ func (f *actionProcessFrame) update() error {
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
 		case ChangeSpeed:
-			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner.opts)
+			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
 
-			speed, err := evaluateExpr(c.Speed.compiledExpr, f.params, &c.Speed, f.actionProcess.runner.opts)
+			speed, err := evaluateExpr(c.Speed.compiledExpr, f.params, &c.Speed, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -479,12 +481,12 @@ func (f *actionProcessFrame) update() error {
 
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
 		case ChangeDirection:
-			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner.opts)
+			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
 
-			dir, err := evaluateExpr(c.Direction.compiledExpr, f.params, &c.Direction, f.actionProcess.runner.opts)
+			dir, err := evaluateExpr(c.Direction.compiledExpr, f.params, &c.Direction, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -514,7 +516,7 @@ func (f *actionProcessFrame) update() error {
 
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
 		case Accel:
-			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner.opts)
+			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -522,7 +524,7 @@ func (f *actionProcessFrame) update() error {
 			f.actionProcess.accelUntil = f.actionProcess.ticks + int(term)
 
 			if c.Horizontal != nil {
-				horizontal, err := evaluateExpr(c.Horizontal.compiledExpr, f.params, c.Horizontal, f.actionProcess.runner.opts)
+				horizontal, err := evaluateExpr(c.Horizontal.compiledExpr, f.params, c.Horizontal, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -546,7 +548,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			if c.Vertical != nil {
-				vertical, err := evaluateExpr(c.Vertical.compiledExpr, f.params, c.Vertical, f.actionProcess.runner.opts)
+				vertical, err := evaluateExpr(c.Vertical.compiledExpr, f.params, c.Vertical, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -569,7 +571,7 @@ func (f *actionProcessFrame) update() error {
 				f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical
 			}
 		case Wait:
-			wait, err := evaluateExpr(c.compiledExpr, f.params, &c, f.actionProcess.runner.opts)
+			wait, err := evaluateExpr(c.compiledExpr, f.params, &c, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -613,14 +615,14 @@ var (
 	funcRegexp     = regexp.MustCompile(`(sin|cos)\([^\)]+\)`)
 )
 
-func evaluateExpr(expr ast.Expr, params parameters, node node, opts *NewRunnerOptions) (float64, error) {
+func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (float64, error) {
 	switch e := expr.(type) {
 	case *ast.BinaryExpr:
-		x, err := evaluateExpr(e.X, params, node, opts)
+		x, err := evaluateExpr(e.X, params, node, runner)
 		if err != nil {
 			return 0, err
 		}
-		y, err := evaluateExpr(e.Y, params, node, opts)
+		y, err := evaluateExpr(e.Y, params, node, runner)
 		if err != nil {
 			return 0, err
 		}
@@ -639,7 +641,7 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, opts *NewRunnerOp
 			return 0, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), node)
 		}
 	case *ast.UnaryExpr:
-		x, err := evaluateExpr(e.X, params, node, opts)
+		x, err := evaluateExpr(e.X, params, node, runner)
 		if err != nil {
 			return 0, err
 		}
@@ -652,9 +654,19 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, opts *NewRunnerOp
 	case *ast.Ident:
 		switch e.Name {
 		case "$rand":
-			return opts.Random.Float64(), nil
+			return runner.opts.Random.Float64(), nil
 		case "$rank":
-			return opts.Rank, nil
+			return runner.opts.Rank, nil
+		case "$direction":
+			b := runner.bullet
+			vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
+			vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
+			return math.Atan2(vy, vx)*180/math.Pi + 90, nil
+		case "$speed":
+			b := runner.bullet
+			vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
+			vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
+			return math.Sqrt(vx*vx + vy*vy), nil
 		default:
 			if v, exists := params[e.Name]; exists {
 				return v, nil
@@ -674,7 +686,7 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, opts *NewRunnerOp
 
 		var args []float64
 		for _, arg := range e.Args {
-			v, err := evaluateExpr(arg, params, node, opts)
+			v, err := evaluateExpr(arg, params, node, runner)
 			if err != nil {
 				return 0, err
 			}
@@ -696,7 +708,7 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, opts *NewRunnerOp
 			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", f.Name), node)
 		}
 	case *ast.ParenExpr:
-		return evaluateExpr(e.X, params, node, opts)
+		return evaluateExpr(e.X, params, node, runner)
 	case *numberValue:
 		return e.value, nil
 	default:

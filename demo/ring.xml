@@ -1,6 +1,9 @@
 <?xml version="1.0" ?>    
 <bulletml type="vertical"
           xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+
+    <!-- This sample uses nonstandard features ($direction) -->
+
     <bullet label="ring">
         <action>
             <repeat>
@@ -32,9 +35,14 @@
         <repeat>
             <times>999</times>
             <action>
+                <changeDirection>
+                    <term>1</term>
+                    <direction>0</direction>
+                </changeDirection>
+                <wait>1</wait>
                 <fire>
                     <bulletRef label="ring">
-                        <param>180 + 60 * $rand - 30</param>
+                        <param>$direction</param>
                     </bulletRef>
                 </fire>
                 <wait>60</wait>

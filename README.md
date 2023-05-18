@@ -304,6 +304,31 @@ You can use loop variables in `<repeat>` elements.
 </repeat>
 ```
 
+## Bullet states
+
+- `$direction`
+    - Current bullet direction
+- `$speed`
+    - Current bullet speed
+
+```xml
+<action>
+    <changeDirection>
+        <term>1</term>
+        <direction type="absolute">360 * $rand</direction>
+    </changeDirection>
+    <changeSpeed>
+        <term>1</term>
+        <speed type="absolute">5 * $rand</speed>
+    </changeSpeed>
+    <wait>1</wait>
+    <fireRef label="fire">
+        <param>$direction</param> <!-- $direction is the result of `360 * $rand` -->
+        <param>$speed</param> <!-- $direction is the result of `5 * $rand` -->
+    </fireRef>
+</action>
+```
+
 ## Math functions
 
 You can use these functions in expressions.
