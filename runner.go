@@ -617,6 +617,8 @@ var (
 
 func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (float64, error) {
 	switch e := expr.(type) {
+	case *numberValue:
+		return e.value, nil
 	case *ast.BinaryExpr:
 		x, err := evaluateExpr(e.X, params, node, runner)
 		if err != nil {
@@ -709,8 +711,6 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (
 		}
 	case *ast.ParenExpr:
 		return evaluateExpr(e.X, params, node, runner)
-	case *numberValue:
-		return e.value, nil
 	default:
 		var buf bytes.Buffer
 		if err := format.Node(&buf, token.NewFileSet(), e); err != nil {
