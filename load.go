@@ -74,6 +74,7 @@ type BulletML struct {
 	Bullets []Bullet     `xml:"bullet"`
 	Actions []Action     `xml:"action"`
 	Fires   []Fire       `xml:"fire"`
+	Comment string       `xml:",comment"`
 }
 
 func (b *BulletML) prepare() error {
@@ -122,6 +123,7 @@ type Bullet struct {
 	Direction    *Direction `xml:"direction,omitempty"`
 	Speed        *Speed     `xml:"speed,omitempty"`
 	ActionOrRefs []any      `xml:",any"`
+	Comment      string     `xml:",comment"`
 	parentNode   node       `xml:"-"`
 }
 
@@ -187,7 +189,9 @@ func (b *Bullet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		if err != nil {
 			return err
 		}
-		if s, ok := token.(xml.StartElement); ok {
+		if c, ok := token.(xml.Comment); ok {
+			b.Comment += string(c)
+		} else if s, ok := token.(xml.StartElement); ok {
 			switch s.Name.Local {
 			case "direction":
 				var dir Direction
@@ -226,6 +230,7 @@ type Action struct {
 	XMLName    xml.Name `xml:"action"`
 	Label      string   `xml:"label,attr,omitempty"`
 	Commands   []any    `xml:",any"`
+	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
 
@@ -325,7 +330,9 @@ func (a *Action) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 		if err != nil {
 			return err
 		}
-		if s, ok := token.(xml.StartElement); ok {
+		if c, ok := token.(xml.Comment); ok {
+			a.Comment += string(c)
+		} else if s, ok := token.(xml.StartElement); ok {
 			switch s.Name.Local {
 			case "repeat":
 				var r Repeat
@@ -403,6 +410,7 @@ type Fire struct {
 	Speed      *Speed     `xml:"speed,omitempty"`
 	Bullet     *Bullet    `xml:"bullet,omitempty"`
 	BulletRef  *BulletRef `xml:"bulletRef,omitempty"`
+	Comment    string     `xml:",comment"`
 	parentNode node       `xml:"-"`
 }
 
@@ -457,6 +465,7 @@ type ChangeDirection struct {
 	XMLName    xml.Name  `xml:"changeDirection"`
 	Direction  Direction `xml:"direction"`
 	Term       Term      `xml:"term"`
+	Comment    string    `xml:",comment"`
 	parentNode node      `xml:"-"`
 }
 
@@ -486,6 +495,7 @@ type ChangeSpeed struct {
 	XMLName    xml.Name `xml:"changeSpeed"`
 	Speed      Speed    `xml:"speed"`
 	Term       Term     `xml:"term"`
+	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
 
@@ -516,6 +526,7 @@ type Accel struct {
 	Horizontal *Horizontal `xml:"horizontal,omitempty"`
 	Vertical   *Vertical   `xml:"vertical,omitempty"`
 	Term       Term        `xml:"term"`
+	Comment    string      `xml:",comment"`
 	parentNode node        `xml:"-"`
 }
 
@@ -553,6 +564,7 @@ func (a Accel) xmlName() string {
 type Wait struct {
 	XMLName      xml.Name `xml:"wait"`
 	Expr         string   `xml:",chardata"`
+	Comment      string   `xml:",comment"`
 	compiledExpr ast.Expr `xml:"-"`
 	parentNode   node     `xml:"-"`
 }
@@ -577,6 +589,7 @@ func (w Wait) xmlName() string {
 
 type Vanish struct {
 	XMLName    xml.Name `xml:"vanish"`
+	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
 
@@ -597,6 +610,7 @@ type Repeat struct {
 	Times      Times      `xml:"times"`
 	Action     *Action    `xml:"action,omitempty"`
 	ActionRef  *ActionRef `xml:"actionRef,omitempty"`
+	Comment    string     `xml:",comment"`
 	parentNode node       `xml:"-"`
 }
 
@@ -651,6 +665,7 @@ type Direction struct {
 	XMLName      xml.Name      `xml:"direction"`
 	Type         DirectionType `xml:"type,attr"`
 	Expr         string        `xml:",chardata"`
+	Comment      string        `xml:",comment"`
 	compiledExpr ast.Expr      `xml:"-"`
 	parentNode   node          `xml:"-"`
 }
@@ -692,6 +707,7 @@ type Speed struct {
 	XMLName      xml.Name  `xml:"speed"`
 	Type         SpeedType `xml:"type,attr"`
 	Expr         string    `xml:",chardata"`
+	Comment      string    `xml:",comment"`
 	compiledExpr ast.Expr  `xml:"-"`
 	parentNode   node      `xml:"-"`
 }
@@ -733,6 +749,7 @@ type Horizontal struct {
 	XMLName      xml.Name       `xml:"horizontal"`
 	Type         HorizontalType `xml:"type,attr"`
 	Expr         string         `xml:",chardata"`
+	Comment      string         `xml:",comment"`
 	compiledExpr ast.Expr       `xml:"-"`
 	parentNode   node           `xml:"-"`
 }
@@ -774,6 +791,7 @@ type Vertical struct {
 	XMLName      xml.Name     `xml:"vertical"`
 	Type         VerticalType `xml:"type,attr"`
 	Expr         string       `xml:",chardata"`
+	Comment      string       `xml:",comment"`
 	compiledExpr ast.Expr     `xml:"-"`
 	parentNode   node         `xml:"-"`
 }
@@ -806,6 +824,7 @@ func (v Vertical) xmlName() string {
 type Term struct {
 	XMLName      xml.Name `xml:"term"`
 	Expr         string   `xml:",chardata"`
+	Comment      string   `xml:",comment"`
 	compiledExpr ast.Expr `xml:"-"`
 	parentNode   node     `xml:"-"`
 }
@@ -831,6 +850,7 @@ func (t Term) xmlName() string {
 type Times struct {
 	XMLName      xml.Name `xml:"times"`
 	Expr         string   `xml:",chardata"`
+	Comment      string   `xml:",comment"`
 	compiledExpr ast.Expr `xml:"-"`
 	parentNode   node     `xml:"-"`
 }
@@ -857,6 +877,7 @@ type BulletRef struct {
 	XMLName    xml.Name `xml:"bulletRef"`
 	Label      string   `xml:"label,attr"`
 	Params     []Param  `xml:"param"`
+	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
 
@@ -895,6 +916,7 @@ type ActionRef struct {
 	XMLName    xml.Name `xml:"actionRef"`
 	Label      string   `xml:"label,attr"`
 	Params     []Param  `xml:"param"`
+	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
 
@@ -933,6 +955,7 @@ type FireRef struct {
 	XMLName    xml.Name `xml:"fireRef"`
 	Label      string   `xml:"label,attr"`
 	Params     []Param  `xml:"param"`
+	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
 
@@ -970,6 +993,7 @@ func (f FireRef) params() []Param {
 type Param struct {
 	XMLName      xml.Name `xml:"param"`
 	Expr         string   `xml:",chardata"`
+	Comment      string   `xml:",comment"`
 	compiledExpr ast.Expr `xml:"-"`
 	parentNode   node     `xml:"-"`
 }

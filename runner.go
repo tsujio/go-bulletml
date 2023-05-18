@@ -31,7 +31,13 @@ type BulletRunner interface {
 }
 
 // FireContext contains context data of fire.
-type FireContext struct{}
+type FireContext struct {
+	// Fire field is the <fire> element which emits this event.
+	Fire *Fire
+
+	// Bullet field is the <bullet> element fired by this event.
+	Bullet *Bullet
+}
 
 // NewRunnerOptions contains options for NewRunner function.
 type NewRunnerOptions struct {
@@ -488,7 +494,10 @@ func (f *actionProcessFrame) update() error {
 				p.pushStack(action, actionParams)
 			}
 
-			f.actionProcess.runner.opts.OnBulletFired(bulletRunner, &FireContext{})
+			f.actionProcess.runner.opts.OnBulletFired(bulletRunner, &FireContext{
+				Fire:   fire,
+				Bullet: bullet,
+			})
 
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
