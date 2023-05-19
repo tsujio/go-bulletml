@@ -17,6 +17,8 @@ import (
 type Runner interface {
 	// Update updates runner state. It should be called in every loop.
 	Update() error
+
+	completed() bool
 }
 
 // BulletRunner runs BulletML and updates the state of a bullet.
@@ -83,47 +85,90 @@ func NewRunner(bulletML *BulletML, opts *NewRunnerOptions) (Runner, error) {
 		return nil, err
 	}
 
-	runner := &runner{
-		bulletML: bulletML,
-		opts:     &_opts,
-		bullet: &bulletModel{
-			speed: _opts.DefaultBulletSpeed,
-		},
-		updateBulletPosition: func(r *runner) {
-			x, y := r.opts.CurrentShootPosition()
-			r.bullet.x = x
-			r.bullet.y = y
-		},
-		actionDefTable: make(map[string]*Action),
-		fireDefTable:   make(map[string]*Fire),
-		bulletDefTable: make(map[string]*Bullet),
-	}
-
+	bulletDefTable := make(map[string]*Bullet)
 	for _, b := range bulletML.Bullets {
 		if b.Label != "" {
-			runner.bulletDefTable[b.Label] = b
+			bulletDefTable[b.Label] = b
 		}
 	}
 
+	fireDefTable := make(map[string]*Fire)
 	for _, f := range bulletML.Fires {
 		if f.Label != "" {
-			runner.fireDefTable[f.Label] = f
+			fireDefTable[f.Label] = f
 		}
 	}
 
+	actionDefTable := make(map[string]*Action)
+	topActions := make([]*Action, 0)
 	for _, a := range bulletML.Actions {
 		if a.Label != "" {
-			runner.actionDefTable[a.Label] = a
+			actionDefTable[a.Label] = a
 
 			if strings.HasPrefix(a.Label, "top") {
-				runner.createActionProcess(a, nil)
+				topActions = append(topActions, a)
 			}
 		}
 	}
 
-	runner.updateBulletPosition(runner)
+	config := &runnerConfig{
+		bulletML:       bulletML,
+		opts:           &_opts,
+		actionDefTable: actionDefTable,
+		fireDefTable:   fireDefTable,
+		bulletDefTable: bulletDefTable,
+		updateBulletPosition: func(r *runner) {
+			x, y := r.config.opts.CurrentShootPosition()
+			r.bullet.x = x
+			r.bullet.y = y
+		},
+	}
 
-	return runner, nil
+	m := &multiRunner{}
+	for _, a := range topActions {
+		b := &bulletModel{
+			speed: _opts.DefaultBulletSpeed,
+		}
+		b.x, b.y = _opts.CurrentShootPosition()
+		r := createRunner(config, b)
+
+		r.pushStack(a, nil)
+
+		m.runners = append(m.runners, r)
+	}
+
+	return m, nil
+}
+
+type multiRunner struct {
+	runners []Runner
+}
+
+func (m *multiRunner) Update() error {
+	_runners := m.runners[:0]
+	for _, r := range m.runners {
+		if err := r.Update(); err != nil {
+			return err
+		} else if !r.completed() {
+			_runners = append(_runners, r)
+		}
+	}
+	m.runners = _runners
+
+	return nil
+}
+
+func (m *multiRunner) completed() bool {
+	return len(m.runners) == 0
+}
+
+type runnerConfig struct {
+	bulletML             *BulletML
+	opts                 *NewRunnerOptions
+	actionDefTable       map[string]*Action
+	fireDefTable         map[string]*Fire
+	bulletDefTable       map[string]*Bullet
+	updateBulletPosition func(*runner)
 }
 
 type bulletModel struct {
@@ -135,21 +180,34 @@ type bulletModel struct {
 }
 
 type runner struct {
-	bulletML                     *BulletML
-	opts                         *NewRunnerOptions
+	config *runnerConfig
+
 	bullet                       *bulletModel
 	bulletPrev                   *bulletModel
 	bulletVxCache, bulletVyCache float64
-	updateBulletPosition         func(*runner)
-	actionProcesses              []*actionProcess
-	actionDefTable               map[string]*Action
-	fireDefTable                 map[string]*Fire
-	bulletDefTable               map[string]*Bullet
+
+	ticks int
+	stack []*actionProcess
+
+	waitUntil int
+
+	changeSpeedUntil                    int
+	changeSpeedDelta, changeSpeedTarget float64
+
+	changeDirectionUntil                        int
+	changeDirectionDelta, changeDirectionTarget float64
+
+	accelUntil                                  int
+	accelHorizontalDelta, accelHorizontalTarget float64
+	accelVerticalDelta, accelVerticalTarget     float64
+
+	lastShoot *bulletModel
 }
 
-func (r *runner) createActionProcess(action *Action, params parameters) *actionProcess {
-	p := &actionProcess{
-		runner:               r,
+func createRunner(config *runnerConfig, bullet *bulletModel) *runner {
+	r := &runner{
+		config:               config,
+		bullet:               bullet,
 		waitUntil:            -1,
 		changeSpeedUntil:     -1,
 		changeDirectionUntil: -1,
@@ -157,20 +215,14 @@ func (r *runner) createActionProcess(action *Action, params parameters) *actionP
 		lastShoot:            &bulletModel{},
 	}
 
-	if action != nil {
-		p.pushStack(action, params)
-	}
-
-	r.actionProcesses = append(r.actionProcesses, p)
-
-	return p
+	return r
 }
 
 func (r *runner) lookUpBulletDefTable(node node, params parameters) (*Bullet, parameters, bool, error) {
 	if b, ok := node.(*Bullet); ok {
 		return b, params, true, nil
 	} else if b, ok := node.(*BulletRef); ok {
-		return lookUpDefTable(b, r.bulletDefTable, params, r)
+		return lookUpDefTable(b, r.config.bulletDefTable, params, r)
 	} else {
 		return nil, nil, false, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
 	}
@@ -180,7 +232,7 @@ func (r *runner) lookUpActionDefTable(node node, params parameters) (*Action, pa
 	if a, ok := node.(*Action); ok {
 		return a, params, true, nil
 	} else if a, ok := node.(*ActionRef); ok {
-		return lookUpDefTable(a, r.actionDefTable, params, r)
+		return lookUpDefTable(a, r.config.actionDefTable, params, r)
 	} else {
 		return nil, nil, false, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
 	}
@@ -190,7 +242,7 @@ func (r *runner) lookUpFireDefTable(node node, params parameters) (*Fire, parame
 	if f, ok := node.(*Fire); ok {
 		return f, params, true, nil
 	} else if f, ok := node.(*FireRef); ok {
-		return lookUpDefTable(f, r.fireDefTable, params, r)
+		return lookUpDefTable(f, r.config.fireDefTable, params, r)
 	} else {
 		return nil, nil, false, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
 	}
@@ -227,22 +279,65 @@ func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params paramet
 	return t, refParams, dc, nil
 }
 
+func (r *runner) pushStack(action *Action, params parameters) {
+	p := &actionProcess{
+		action: action,
+		params: params,
+		runner: r,
+	}
+
+	r.stack = append(r.stack, p)
+}
+
 func (r *runner) Update() error {
-	_actionProcesses := r.actionProcesses[:0]
-	for _, p := range r.actionProcesses {
-		if err := p.update(); err != nil {
-			if err != actionProcessEnd {
-				return err
+	if r.ticks > r.waitUntil {
+		for len(r.stack) > 0 {
+			top := r.stack[len(r.stack)-1]
+			if err := top.update(); err != nil {
+				if err == actionProcessEnd {
+					r.stack = r.stack[:len(r.stack)-1]
+				} else if err == actionProcessWait {
+					break
+				} else {
+					return err
+				}
 			}
-		} else {
-			_actionProcesses = append(_actionProcesses, p)
 		}
 	}
-	r.actionProcesses = _actionProcesses
 
-	r.updateBulletPosition(r)
+	if r.ticks < r.changeSpeedUntil {
+		r.bullet.speed += r.changeSpeedDelta
+	} else if r.ticks == r.changeSpeedUntil {
+		r.bullet.speed = r.changeSpeedTarget
+	}
+
+	if r.ticks < r.changeDirectionUntil {
+		r.bullet.direction += r.changeDirectionDelta
+	} else if r.ticks == r.changeDirectionUntil {
+		r.bullet.direction = r.changeDirectionTarget
+	}
+
+	if r.ticks < r.accelUntil {
+		r.bullet.accelSpeedHorizontal += r.accelHorizontalDelta
+		r.bullet.accelSpeedVertical += r.accelVerticalDelta
+	} else if r.ticks == r.accelUntil {
+		r.bullet.accelSpeedHorizontal = r.accelHorizontalTarget
+		r.bullet.accelSpeedVertical = r.accelVerticalTarget
+	}
+
+	r.config.updateBulletPosition(r)
+
+	r.ticks++
 
 	return nil
+}
+
+func (r *runner) completed() bool {
+	return len(r.stack) == 0 &&
+		r.ticks > r.waitUntil &&
+		r.ticks > r.changeSpeedUntil &&
+		r.ticks > r.changeDirectionUntil &&
+		r.ticks > r.accelUntil
 }
 
 func (r *runner) Position() (float64, float64) {
@@ -253,177 +348,131 @@ func (r *runner) Vanished() bool {
 	return r.bullet.vanished
 }
 
-type actionProcess struct {
-	ticks                                       int
-	stack                                       []*actionProcessFrame
-	waitUntil                                   int
-	changeSpeedUntil                            int
-	changeSpeedDelta, changeSpeedTarget         float64
-	changeDirectionUntil                        int
-	changeDirectionDelta, changeDirectionTarget float64
-	accelUntil                                  int
-	accelHorizontalDelta, accelHorizontalTarget float64
-	accelVerticalDelta, accelVerticalTarget     float64
-	lastShoot                                   *bulletModel
-	runner                                      *runner
-}
-
-var actionProcessEnd = errors.New("actionProcessEnd")
-
-func (p *actionProcess) update() error {
-	if p.ticks > p.waitUntil {
-		for len(p.stack) > 0 {
-			top := p.stack[len(p.stack)-1]
-			if err := top.update(); err != nil {
-				if err == actionProcessFrameEnd {
-					p.stack = p.stack[:len(p.stack)-1]
-				} else if err == actionProcessFrameWait {
-					break
-				} else {
-					return err
-				}
-			}
-		}
-	}
-
-	if p.ticks < p.changeSpeedUntil {
-		p.runner.bullet.speed += p.changeSpeedDelta
-	} else if p.ticks == p.changeSpeedUntil {
-		p.runner.bullet.speed = p.changeSpeedTarget
-	}
-
-	if p.ticks < p.changeDirectionUntil {
-		p.runner.bullet.direction += p.changeDirectionDelta
-	} else if p.ticks == p.changeDirectionUntil {
-		p.runner.bullet.direction = p.changeDirectionTarget
-	}
-
-	if p.ticks < p.accelUntil {
-		p.runner.bullet.accelSpeedHorizontal += p.accelHorizontalDelta
-		p.runner.bullet.accelSpeedVertical += p.accelVerticalDelta
-	} else if p.ticks == p.accelUntil {
-		p.runner.bullet.accelSpeedHorizontal = p.accelHorizontalTarget
-		p.runner.bullet.accelSpeedVertical = p.accelVerticalTarget
-	}
-
-	p.ticks++
-
-	if len(p.stack) == 0 &&
-		p.ticks > p.waitUntil &&
-		p.ticks > p.changeSpeedUntil &&
-		p.ticks > p.changeDirectionUntil {
-		return actionProcessEnd
-	}
-
-	return nil
-}
-
-func (p *actionProcess) pushStack(action *Action, params parameters) {
-	f := &actionProcessFrame{
-		action:        action,
-		actionProcess: p,
-		params:        params,
-	}
-
-	p.stack = append(p.stack, f)
-}
-
 type parameters map[string]float64
 
-type actionProcessFrame struct {
+type actionProcess struct {
 	action                   *Action
 	actionIndex              int
 	repeatIndex, repeatCount int
 	repeatAction             *Action
 	repeatParams             parameters
 	params                   parameters
-	actionProcess            *actionProcess
+	runner                   *runner
 }
 
 var (
-	actionProcessFrameWait = errors.New("actionProcessFrameWait")
-	actionProcessFrameEnd  = errors.New("actionProcessFrameEnd")
+	actionProcessEnd  = errors.New("actionProcessEnd")
+	actionProcessWait = errors.New("actionProcessWait")
 )
 
-func (f *actionProcessFrame) update() error {
-	for f.actionIndex < len(f.action.Commands) {
-		switch c := f.action.Commands[f.actionIndex].(type) {
+func updateBulletPosition(r *runner) {
+	if !r.bullet.vanished {
+		var vx, vy float64
+		if r.bulletPrev == nil ||
+			r.bulletPrev.speed != r.bullet.speed ||
+			r.bulletPrev.direction != r.bullet.direction ||
+			r.bulletPrev.accelSpeedHorizontal != r.bullet.accelSpeedHorizontal ||
+			r.bulletPrev.accelSpeedVertical != r.bullet.accelSpeedVertical {
+			vx = r.bullet.speed*math.Cos(r.bullet.direction) + r.bullet.accelSpeedHorizontal
+			vy = r.bullet.speed*math.Sin(r.bullet.direction) + r.bullet.accelSpeedVertical
+			r.bulletVxCache = vx
+			r.bulletVyCache = vy
+		} else {
+			vx = r.bulletVxCache
+			vy = r.bulletVyCache
+		}
+
+		r.bullet.x += vx
+		r.bullet.y += vy
+	}
+
+	if r.bulletPrev == nil {
+		b := *r.bullet
+		r.bulletPrev = &b
+	} else {
+		*r.bulletPrev = *r.bullet
+	}
+}
+
+func (p *actionProcess) update() error {
+	for p.actionIndex < len(p.action.Commands) {
+		switch c := p.action.Commands[p.actionIndex].(type) {
 		case *Repeat:
-			if f.repeatIndex == 0 {
-				repeat, _, err := evaluateExpr(c.Times.compiledExpr, f.params, c.Times, f.actionProcess.runner)
+			if p.repeatIndex == 0 {
+				repeat, _, err := evaluateExpr(c.Times.compiledExpr, p.params, c.Times, p.runner)
 				if err != nil {
 					return err
 				}
-				f.repeatCount = int(repeat)
+				p.repeatCount = int(repeat)
 
-				action, params, deterministic, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
+				action, params, deterministic, err := p.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), p.params)
 				if err != nil {
 					return err
 				}
 
 				if deterministic {
-					f.repeatAction = action
+					p.repeatAction = action
 
-					f.repeatParams = make(parameters)
+					p.repeatParams = make(parameters)
 					for k, v := range params {
-						f.repeatParams[k] = v
+						p.repeatParams[k] = v
 					}
 				}
 			}
 
-			if f.repeatAction == nil {
-				action, params, _, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
+			if p.repeatAction == nil {
+				action, params, _, err := p.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), p.params)
 				if err != nil {
 					return err
 				}
 
-				f.repeatAction = action
+				p.repeatAction = action
 
-				f.repeatParams = make(parameters)
+				p.repeatParams = make(parameters)
 				for k, v := range params {
-					f.repeatParams[k] = v
+					p.repeatParams[k] = v
 				}
 			}
 
-			if f.repeatIndex < f.repeatCount {
-				f.repeatParams["$loop.index"] = float64(f.repeatIndex)
+			if p.repeatIndex < p.repeatCount {
+				p.repeatParams["$loop.index"] = float64(p.repeatIndex)
 
-				f.actionProcess.pushStack(f.repeatAction, f.repeatParams)
+				p.runner.pushStack(p.repeatAction, p.repeatParams)
 
-				f.repeatIndex++
+				p.repeatIndex++
 
 				return nil
 			} else {
-				f.repeatIndex = 0
-				f.repeatCount = 0
-				f.repeatAction = nil
-				f.repeatParams = nil
+				p.repeatIndex = 0
+				p.repeatCount = 0
+				p.repeatAction = nil
+				p.repeatParams = nil
 			}
 		case *Fire, *FireRef:
-			fire, params, _, err := f.actionProcess.runner.lookUpFireDefTable(c.(node), f.params)
+			fire, params, _, err := p.runner.lookUpFireDefTable(c.(node), p.params)
 			if err != nil {
 				return err
 			}
 			fireParams := params
 
-			bullet, params, _, err := f.actionProcess.runner.lookUpBulletDefTable(coalesce(fire.Bullet, fire.BulletRef).(node), params)
+			bullet, params, _, err := p.runner.lookUpBulletDefTable(coalesce(fire.Bullet, fire.BulletRef).(node), params)
 			if err != nil {
 				return err
 			}
 			bulletParams := params
 
-			sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
-			tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
+			sx, sy := p.runner.bullet.x, p.runner.bullet.y
+			tx, ty := p.runner.config.opts.CurrentTargetPosition()
 
 			var dir float64
 			d, exists := fire.Direction.Get()
 			if exists {
-				dir, _, err = evaluateExpr(d.compiledExpr, fireParams, d, f.actionProcess.runner)
+				dir, _, err = evaluateExpr(d.compiledExpr, fireParams, d, p.runner)
 				if err != nil {
 					return err
 				}
 			} else if d, exists = bullet.Direction.Get(); exists {
-				dir, _, err = evaluateExpr(d.compiledExpr, bulletParams, d, f.actionProcess.runner)
+				dir, _, err = evaluateExpr(d.compiledExpr, bulletParams, d, p.runner)
 				if err != nil {
 					return err
 				}
@@ -438,9 +487,9 @@ func (f *actionProcessFrame) update() error {
 				case DirectionTypeAbsolute:
 					dir -= math.Pi / 2
 				case DirectionTypeRelative:
-					dir += f.actionProcess.runner.bullet.direction
+					dir += p.runner.bullet.direction
 				case DirectionTypeSequence:
-					dir += f.actionProcess.lastShoot.direction
+					dir += p.runner.lastShoot.direction
 				default:
 					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", d.Type, d.XMLName.Local), d)
 				}
@@ -451,12 +500,12 @@ func (f *actionProcessFrame) update() error {
 			var speed float64
 			s, exists := fire.Speed.Get()
 			if exists {
-				speed, _, err = evaluateExpr(s.compiledExpr, fireParams, s, f.actionProcess.runner)
+				speed, _, err = evaluateExpr(s.compiledExpr, fireParams, s, p.runner)
 				if err != nil {
 					return err
 				}
 			} else if s, exists = bullet.Speed.Get(); exists {
-				speed, _, err = evaluateExpr(s.compiledExpr, bulletParams, s, f.actionProcess.runner)
+				speed, _, err = evaluateExpr(s.compiledExpr, bulletParams, s, p.runner)
 				if err != nil {
 					return err
 				}
@@ -467,81 +516,48 @@ func (f *actionProcessFrame) update() error {
 				case SpeedTypeAbsolute:
 					// Do nothing
 				case SpeedTypeRelative:
-					speed += f.actionProcess.runner.bullet.speed
+					speed += p.runner.bullet.speed
 				case SpeedTypeSequence:
-					speed += f.actionProcess.lastShoot.speed
+					speed += p.runner.lastShoot.speed
 				default:
 					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", s.Type, s.XMLName.Local), s)
 				}
 			} else {
-				speed = f.actionProcess.runner.opts.DefaultBulletSpeed
+				speed = p.runner.config.opts.DefaultBulletSpeed
 			}
 
-			bulletRunner := &runner{
-				bulletML: f.actionProcess.runner.bulletML,
-				opts:     f.actionProcess.runner.opts,
-				bullet: &bulletModel{
-					x:         sx,
-					y:         sy,
-					speed:     speed,
-					direction: dir,
-				},
-				updateBulletPosition: func(r *runner) {
-					if !r.bullet.vanished {
-						var vx, vy float64
-						if r.bulletPrev == nil ||
-							r.bulletPrev.speed != r.bullet.speed ||
-							r.bulletPrev.direction != r.bullet.direction ||
-							r.bulletPrev.accelSpeedHorizontal != r.bullet.accelSpeedHorizontal ||
-							r.bulletPrev.accelSpeedVertical != r.bullet.accelSpeedVertical {
-							vx = r.bullet.speed*math.Cos(r.bullet.direction) + r.bullet.accelSpeedHorizontal
-							vy = r.bullet.speed*math.Sin(r.bullet.direction) + r.bullet.accelSpeedVertical
-							r.bulletVxCache = vx
-							r.bulletVyCache = vy
-						} else {
-							vx = r.bulletVxCache
-							vy = r.bulletVyCache
-						}
-
-						r.bullet.x += vx
-						r.bullet.y += vy
-					}
-
-					if r.bulletPrev == nil {
-						b := *r.bullet
-						r.bulletPrev = &b
-					} else {
-						*r.bulletPrev = *r.bullet
-					}
-				},
-				actionDefTable: f.actionProcess.runner.actionDefTable,
-				fireDefTable:   f.actionProcess.runner.fireDefTable,
-				bulletDefTable: f.actionProcess.runner.bulletDefTable,
+			config := *p.runner.config
+			config.updateBulletPosition = updateBulletPosition
+			bm := bulletModel{
+				x:         sx,
+				y:         sy,
+				speed:     speed,
+				direction: dir,
 			}
+			bulletRunner := createRunner(&config, &bm)
 
-			p := bulletRunner.createActionProcess(nil, nil)
 			for i := len(bullet.ActionOrRefs) - 1; i >= 0; i-- {
-				action, actionParams, _, err := f.actionProcess.runner.lookUpActionDefTable(bullet.ActionOrRefs[i].(node), params)
+				action, actionParams, _, err := p.runner.lookUpActionDefTable(bullet.ActionOrRefs[i].(node), params)
 				if err != nil {
 					return err
 				}
 
-				p.pushStack(action, actionParams)
+				bulletRunner.pushStack(action, actionParams)
 			}
 
-			f.actionProcess.runner.opts.OnBulletFired(bulletRunner, &FireContext{
+			p.runner.config.opts.OnBulletFired(bulletRunner, &FireContext{
 				Fire:   fire,
 				Bullet: bullet,
 			})
 
-			*f.actionProcess.lastShoot = *bulletRunner.bullet
+			*p.runner.lastShoot = *bulletRunner.bullet
 		case *ChangeSpeed:
-			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, c.Term, f.actionProcess.runner)
+			term, _, err := evaluateExpr(c.Term.compiledExpr, p.params, c.Term, p.runner)
 			if err != nil {
 				return err
 			}
 
-			speed, _, err := evaluateExpr(c.Speed.compiledExpr, f.params, c.Speed, f.actionProcess.runner)
+			speed, _, err := evaluateExpr(c.Speed.compiledExpr, p.params, c.Speed, p.runner)
 			if err != nil {
 				return err
 			}
@@ -549,25 +565,25 @@ func (f *actionProcessFrame) update() error {
 			switch c.Speed.Type {
 			case SpeedTypeAbsolute, SpeedTypeRelative:
 				if c.Speed.Type == SpeedTypeRelative {
-					speed += f.actionProcess.runner.bullet.speed
+					speed += p.runner.bullet.speed
 				}
-				f.actionProcess.changeSpeedDelta = (speed - f.actionProcess.runner.bullet.speed) / term
-				f.actionProcess.changeSpeedTarget = speed
+				p.runner.changeSpeedDelta = (speed - p.runner.bullet.speed) / term
+				p.runner.changeSpeedTarget = speed
 			case SpeedTypeSequence:
-				f.actionProcess.changeSpeedDelta = speed
-				f.actionProcess.changeSpeedTarget = speed*term + f.actionProcess.runner.bullet.speed
+				p.runner.changeSpeedDelta = speed
+				p.runner.changeSpeedTarget = speed*term + p.runner.bullet.speed
 			default:
 				return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", c.Speed.Type, c.Speed.XMLName.Local), c.Speed)
 			}
 
-			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
+			p.runner.changeSpeedUntil = p.runner.ticks + int(term)
 		case *ChangeDirection:
-			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, c.Term, f.actionProcess.runner)
+			term, _, err := evaluateExpr(c.Term.compiledExpr, p.params, c.Term, p.runner)
 			if err != nil {
 				return err
 			}
 
-			dir, _, err := evaluateExpr(c.Direction.compiledExpr, f.params, c.Direction, f.actionProcess.runner)
+			dir, _, err := evaluateExpr(c.Direction.compiledExpr, p.params, c.Direction, p.runner)
 			if err != nil {
 				return err
 			}
@@ -579,33 +595,33 @@ func (f *actionProcessFrame) update() error {
 				if c.Direction.Type == DirectionTypeAbsolute {
 					dir -= math.Pi / 2
 				} else if c.Direction.Type == DirectionTypeAim {
-					sx, sy := f.actionProcess.runner.bullet.x, f.actionProcess.runner.bullet.y
-					tx, ty := f.actionProcess.runner.opts.CurrentTargetPosition()
+					sx, sy := p.runner.bullet.x, p.runner.bullet.y
+					tx, ty := p.runner.config.opts.CurrentTargetPosition()
 					dir += math.Atan2(ty-sy, tx-sx)
 				} else if c.Direction.Type == DirectionTypeRelative {
-					dir += f.actionProcess.runner.bullet.direction
+					dir += p.runner.bullet.direction
 				}
 
-				f.actionProcess.changeDirectionDelta = normalizeDir(dir-f.actionProcess.runner.bullet.direction) / term
-				f.actionProcess.changeDirectionTarget = normalizeDir(dir)
+				p.runner.changeDirectionDelta = normalizeDir(dir-p.runner.bullet.direction) / term
+				p.runner.changeDirectionTarget = normalizeDir(dir)
 			case DirectionTypeSequence:
-				f.actionProcess.changeDirectionDelta = normalizeDir(dir)
-				f.actionProcess.changeDirectionTarget = normalizeDir(dir*term + f.actionProcess.runner.bullet.direction)
+				p.runner.changeDirectionDelta = normalizeDir(dir)
+				p.runner.changeDirectionTarget = normalizeDir(dir*term + p.runner.bullet.direction)
 			default:
 				return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", c.Direction.Type, c.Direction.XMLName.Local), c.Direction)
 			}
 
-			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
+			p.runner.changeDirectionUntil = p.runner.ticks + int(term)
 		case *Accel:
-			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, c.Term, f.actionProcess.runner)
+			term, _, err := evaluateExpr(c.Term.compiledExpr, p.params, c.Term, p.runner)
 			if err != nil {
 				return err
 			}
 
-			f.actionProcess.accelUntil = f.actionProcess.ticks + int(term)
+			p.runner.accelUntil = p.runner.ticks + int(term)
 
 			if h, exists := c.Horizontal.Get(); exists {
-				horizontal, _, err := evaluateExpr(h.compiledExpr, f.params, h, f.actionProcess.runner)
+				horizontal, _, err := evaluateExpr(h.compiledExpr, p.params, h, p.runner)
 				if err != nil {
 					return err
 				}
@@ -613,23 +629,23 @@ func (f *actionProcessFrame) update() error {
 				switch h.Type {
 				case HorizontalTypeAbsolute, HorizontalTypeRelative:
 					if h.Type == HorizontalTypeRelative {
-						horizontal += f.actionProcess.runner.bullet.accelSpeedHorizontal
+						horizontal += p.runner.bullet.accelSpeedHorizontal
 					}
-					f.actionProcess.accelHorizontalDelta = (horizontal - f.actionProcess.runner.bullet.accelSpeedHorizontal) / term
-					f.actionProcess.accelHorizontalTarget = horizontal
+					p.runner.accelHorizontalDelta = (horizontal - p.runner.bullet.accelSpeedHorizontal) / term
+					p.runner.accelHorizontalTarget = horizontal
 				case HorizontalTypeSequence:
-					f.actionProcess.accelHorizontalDelta = horizontal
-					f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal + horizontal*term
+					p.runner.accelHorizontalDelta = horizontal
+					p.runner.accelHorizontalTarget = p.runner.bullet.accelSpeedHorizontal + horizontal*term
 				default:
 					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", string(h.Type), h.XMLName.Local), h)
 				}
 			} else {
-				f.actionProcess.accelHorizontalDelta = 0
-				f.actionProcess.accelHorizontalTarget = f.actionProcess.runner.bullet.accelSpeedHorizontal
+				p.runner.accelHorizontalDelta = 0
+				p.runner.accelHorizontalTarget = p.runner.bullet.accelSpeedHorizontal
 			}
 
 			if v, exists := c.Vertical.Get(); exists {
-				vertical, _, err := evaluateExpr(v.compiledExpr, f.params, v, f.actionProcess.runner)
+				vertical, _, err := evaluateExpr(v.compiledExpr, p.params, v, p.runner)
 				if err != nil {
 					return err
 				}
@@ -637,50 +653,50 @@ func (f *actionProcessFrame) update() error {
 				switch v.Type {
 				case VerticalTypeAbsolute, VerticalTypeRelative:
 					if v.Type == VerticalTypeRelative {
-						vertical += f.actionProcess.runner.bullet.accelSpeedVertical
+						vertical += p.runner.bullet.accelSpeedVertical
 					}
-					f.actionProcess.accelVerticalDelta = (vertical - f.actionProcess.runner.bullet.accelSpeedVertical) / term
-					f.actionProcess.accelVerticalTarget = vertical
+					p.runner.accelVerticalDelta = (vertical - p.runner.bullet.accelSpeedVertical) / term
+					p.runner.accelVerticalTarget = vertical
 				case VerticalTypeSequence:
-					f.actionProcess.accelVerticalDelta = vertical
-					f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical + vertical*term
+					p.runner.accelVerticalDelta = vertical
+					p.runner.accelVerticalTarget = p.runner.bullet.accelSpeedVertical + vertical*term
 				default:
 					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", string(v.Type), v.XMLName.Local), v)
 				}
 			} else {
-				f.actionProcess.accelVerticalDelta = 0
-				f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical
+				p.runner.accelVerticalDelta = 0
+				p.runner.accelVerticalTarget = p.runner.bullet.accelSpeedVertical
 			}
 		case *Wait:
-			wait, _, err := evaluateExpr(c.compiledExpr, f.params, c, f.actionProcess.runner)
+			wait, _, err := evaluateExpr(c.compiledExpr, p.params, c, p.runner)
 			if err != nil {
 				return err
 			}
 
-			f.actionProcess.waitUntil = f.actionProcess.ticks + int(wait)
+			p.runner.waitUntil = p.runner.ticks + int(wait)
 
-			f.actionIndex++
+			p.actionIndex++
 
-			return actionProcessFrameWait
+			return actionProcessWait
 		case *Vanish:
-			f.actionProcess.runner.bullet.vanished = true
+			p.runner.bullet.vanished = true
 		case *Action, *ActionRef:
-			action, params, _, err := f.actionProcess.runner.lookUpActionDefTable(c.(node), f.params)
+			action, params, _, err := p.runner.lookUpActionDefTable(c.(node), p.params)
 			if err != nil {
 				return err
 			}
 
-			f.actionProcess.pushStack(action, params)
+			p.runner.pushStack(action, params)
 
-			f.actionIndex++
+			p.actionIndex++
 
 			return nil
 		}
 
-		f.actionIndex++
+		p.actionIndex++
 	}
 
-	return actionProcessFrameEnd
+	return actionProcessEnd
 }
 
 func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (value float64, deterministic bool, err error) {
@@ -724,9 +740,9 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (
 	case *ast.Ident:
 		switch e.Name {
 		case "$rand":
-			return runner.opts.Random.Float64(), false, nil
+			return runner.config.opts.Random.Float64(), false, nil
 		case "$rank":
-			return runner.opts.Rank, true, nil
+			return runner.config.opts.Rank, true, nil
 		case "$direction":
 			b := runner.bullet
 			if b.accelSpeedHorizontal == 0 && b.accelSpeedVertical == 0 {
