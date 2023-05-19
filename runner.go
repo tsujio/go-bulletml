@@ -167,45 +167,45 @@ func (r *runner) createActionProcess(action *Action, params parameters) *actionP
 	return p
 }
 
-func (r *runner) lookUpBulletDefTable(node node, params parameters) (*Bullet, parameters, error) {
+func (r *runner) lookUpBulletDefTable(node node, params parameters) (*Bullet, parameters, bool, error) {
 	if b, ok := node.(Bullet); ok {
-		return &b, params, nil
+		return &b, params, true, nil
 	} else if b, ok := node.(*Bullet); ok {
-		return b, params, nil
+		return b, params, true, nil
 	} else if b, ok := node.(BulletRef); ok {
 		return lookUpDefTable(&b, r.bulletDefTable, params, r)
 	} else if b, ok := node.(*BulletRef); ok {
 		return lookUpDefTable(b, r.bulletDefTable, params, r)
 	} else {
-		return nil, nil, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
+		return nil, nil, false, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
 	}
 }
 
-func (r *runner) lookUpActionDefTable(node node, params parameters) (*Action, parameters, error) {
+func (r *runner) lookUpActionDefTable(node node, params parameters) (*Action, parameters, bool, error) {
 	if a, ok := node.(Action); ok {
-		return &a, params, nil
+		return &a, params, true, nil
 	} else if a, ok := node.(*Action); ok {
-		return a, params, nil
+		return a, params, true, nil
 	} else if a, ok := node.(ActionRef); ok {
 		return lookUpDefTable(&a, r.actionDefTable, params, r)
 	} else if a, ok := node.(*ActionRef); ok {
 		return lookUpDefTable(a, r.actionDefTable, params, r)
 	} else {
-		return nil, nil, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
+		return nil, nil, false, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
 	}
 }
 
-func (r *runner) lookUpFireDefTable(node node, params parameters) (*Fire, parameters, error) {
+func (r *runner) lookUpFireDefTable(node node, params parameters) (*Fire, parameters, bool, error) {
 	if f, ok := node.(Fire); ok {
-		return &f, params, nil
+		return &f, params, true, nil
 	} else if f, ok := node.(*Fire); ok {
-		return f, params, nil
+		return f, params, true, nil
 	} else if f, ok := node.(FireRef); ok {
 		return lookUpDefTable(&f, r.fireDefTable, params, r)
 	} else if f, ok := node.(*FireRef); ok {
 		return lookUpDefTable(f, r.fireDefTable, params, r)
 	} else {
-		return nil, nil, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
+		return nil, nil, false, newBulletmlError(fmt.Sprintf("Invalid type: %T", node), node)
 	}
 }
 
@@ -216,23 +216,25 @@ func coalesce[T, U any](x *T, y *U) any {
 	return y
 }
 
-func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params parameters, runner *runner) (*T, parameters, error) {
+func lookUpDefTable[T any, R refType](ref R, table map[string]*T, params parameters, runner *runner) (*T, parameters, bool, error) {
 	t, exists := table[ref.label()]
 	if !exists {
-		return nil, nil, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.xmlName(), ref.label()), ref)
+		return nil, nil, false, newBulletmlError(fmt.Sprintf("<%s label=\"%s\"> not found", ref.xmlName(), ref.label()), ref)
 	}
 
 	refParams := make(parameters)
+	dc := true
 	for i, p := range ref.params() {
-		v, err := evaluateExpr(p.compiledExpr, params, &p, runner)
+		v, d, err := evaluateExpr(p.compiledExpr, params, &p, runner)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
 		refParams[fmt.Sprintf("$%d", i+1)] = v
+		dc = dc && d
 	}
 
-	return t, refParams, nil
+	return t, refParams, dc, nil
 }
 
 func (r *runner) Update() error {
@@ -342,6 +344,8 @@ type actionProcessFrame struct {
 	action                   *Action
 	actionIndex              int
 	repeatIndex, repeatCount int
+	repeatAction             *Action
+	repeatParams             parameters
 	params                   parameters
 	actionProcess            *actionProcess
 }
@@ -356,42 +360,63 @@ func (f *actionProcessFrame) update() error {
 		switch c := f.action.Commands[f.actionIndex].(type) {
 		case Repeat:
 			if f.repeatIndex == 0 {
-				repeat, err := evaluateExpr(c.Times.compiledExpr, f.params, &c.Times, f.actionProcess.runner)
+				repeat, _, err := evaluateExpr(c.Times.compiledExpr, f.params, &c.Times, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
 				f.repeatCount = int(repeat)
+
+				action, params, deterministic, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
+				if err != nil {
+					return err
+				}
+
+				if deterministic {
+					f.repeatAction = action
+
+					f.repeatParams = make(parameters)
+					for k, v := range params {
+						f.repeatParams[k] = v
+					}
+				}
 			}
 
-			action, params, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
-			if err != nil {
-				return err
-			}
+			if f.repeatAction == nil {
+				action, params, _, err := f.actionProcess.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), f.params)
+				if err != nil {
+					return err
+				}
 
-			prms := make(parameters)
-			for k, v := range params {
-				prms[k] = v
+				f.repeatAction = action
+
+				f.repeatParams = make(parameters)
+				for k, v := range params {
+					f.repeatParams[k] = v
+				}
 			}
 
 			if f.repeatIndex < f.repeatCount {
-				prms["$loop.index"] = float64(f.repeatIndex)
+				f.repeatParams["$loop.index"] = float64(f.repeatIndex)
 
-				f.actionProcess.pushStack(action, prms)
+				f.actionProcess.pushStack(f.repeatAction, f.repeatParams)
 
 				f.repeatIndex++
 
 				return nil
 			} else {
 				f.repeatIndex = 0
+				f.repeatCount = 0
+				f.repeatAction = nil
+				f.repeatParams = nil
 			}
 		case Fire, FireRef:
-			fire, params, err := f.actionProcess.runner.lookUpFireDefTable(c.(node), f.params)
+			fire, params, _, err := f.actionProcess.runner.lookUpFireDefTable(c.(node), f.params)
 			if err != nil {
 				return err
 			}
 			fireParams := params
 
-			bullet, params, err := f.actionProcess.runner.lookUpBulletDefTable(coalesce(fire.Bullet, fire.BulletRef).(node), params)
+			bullet, params, _, err := f.actionProcess.runner.lookUpBulletDefTable(coalesce(fire.Bullet, fire.BulletRef).(node), params)
 			if err != nil {
 				return err
 			}
@@ -403,12 +428,12 @@ func (f *actionProcessFrame) update() error {
 			var dir float64
 			d := fire.Direction
 			if d != nil {
-				dir, err = evaluateExpr(d.compiledExpr, fireParams, d, f.actionProcess.runner)
+				dir, _, err = evaluateExpr(d.compiledExpr, fireParams, d, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
 			} else if d = bullet.Direction; d != nil {
-				dir, err = evaluateExpr(d.compiledExpr, bulletParams, d, f.actionProcess.runner)
+				dir, _, err = evaluateExpr(d.compiledExpr, bulletParams, d, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -436,12 +461,12 @@ func (f *actionProcessFrame) update() error {
 			var speed float64
 			s := fire.Speed
 			if s != nil {
-				speed, err = evaluateExpr(s.compiledExpr, fireParams, s, f.actionProcess.runner)
+				speed, _, err = evaluateExpr(s.compiledExpr, fireParams, s, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
 			} else if s = bullet.Speed; s != nil {
-				speed, err = evaluateExpr(s.compiledExpr, bulletParams, s, f.actionProcess.runner)
+				speed, _, err = evaluateExpr(s.compiledExpr, bulletParams, s, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -486,7 +511,7 @@ func (f *actionProcessFrame) update() error {
 
 			p := bulletRunner.createActionProcess(nil, nil)
 			for i := len(bullet.ActionOrRefs) - 1; i >= 0; i-- {
-				action, actionParams, err := f.actionProcess.runner.lookUpActionDefTable(bullet.ActionOrRefs[i].(node), params)
+				action, actionParams, _, err := f.actionProcess.runner.lookUpActionDefTable(bullet.ActionOrRefs[i].(node), params)
 				if err != nil {
 					return err
 				}
@@ -502,12 +527,12 @@ func (f *actionProcessFrame) update() error {
 			lastShoot := *bulletRunner.bullet
 			f.actionProcess.lastShoot = &lastShoot
 		case ChangeSpeed:
-			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
+			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
 
-			speed, err := evaluateExpr(c.Speed.compiledExpr, f.params, &c.Speed, f.actionProcess.runner)
+			speed, _, err := evaluateExpr(c.Speed.compiledExpr, f.params, &c.Speed, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -528,12 +553,12 @@ func (f *actionProcessFrame) update() error {
 
 			f.actionProcess.changeSpeedUntil = f.actionProcess.ticks + int(term)
 		case ChangeDirection:
-			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
+			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
 
-			dir, err := evaluateExpr(c.Direction.compiledExpr, f.params, &c.Direction, f.actionProcess.runner)
+			dir, _, err := evaluateExpr(c.Direction.compiledExpr, f.params, &c.Direction, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -563,7 +588,7 @@ func (f *actionProcessFrame) update() error {
 
 			f.actionProcess.changeDirectionUntil = f.actionProcess.ticks + int(term)
 		case Accel:
-			term, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
+			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -571,7 +596,7 @@ func (f *actionProcessFrame) update() error {
 			f.actionProcess.accelUntil = f.actionProcess.ticks + int(term)
 
 			if c.Horizontal != nil {
-				horizontal, err := evaluateExpr(c.Horizontal.compiledExpr, f.params, c.Horizontal, f.actionProcess.runner)
+				horizontal, _, err := evaluateExpr(c.Horizontal.compiledExpr, f.params, c.Horizontal, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -595,7 +620,7 @@ func (f *actionProcessFrame) update() error {
 			}
 
 			if c.Vertical != nil {
-				vertical, err := evaluateExpr(c.Vertical.compiledExpr, f.params, c.Vertical, f.actionProcess.runner)
+				vertical, _, err := evaluateExpr(c.Vertical.compiledExpr, f.params, c.Vertical, f.actionProcess.runner)
 				if err != nil {
 					return err
 				}
@@ -618,7 +643,7 @@ func (f *actionProcessFrame) update() error {
 				f.actionProcess.accelVerticalTarget = f.actionProcess.runner.bullet.accelSpeedVertical
 			}
 		case Wait:
-			wait, err := evaluateExpr(c.compiledExpr, f.params, &c, f.actionProcess.runner)
+			wait, _, err := evaluateExpr(c.compiledExpr, f.params, &c, f.actionProcess.runner)
 			if err != nil {
 				return err
 			}
@@ -631,7 +656,7 @@ func (f *actionProcessFrame) update() error {
 		case Vanish:
 			f.actionProcess.runner.bullet.vanished = true
 		case Action, ActionRef:
-			action, params, err := f.actionProcess.runner.lookUpActionDefTable(c.(node), f.params)
+			action, params, _, err := f.actionProcess.runner.lookUpActionDefTable(c.(node), f.params)
 			if err != nil {
 				return err
 			}
@@ -649,73 +674,73 @@ func (f *actionProcessFrame) update() error {
 	return actionProcessFrameEnd
 }
 
-func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (float64, error) {
+func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (value float64, deterministic bool, err error) {
 	switch e := expr.(type) {
 	case *numberValue:
-		return e.value, nil
+		return e.value, true, nil
 	case *ast.BinaryExpr:
-		x, err := evaluateExpr(e.X, params, node, runner)
+		x, xDc, err := evaluateExpr(e.X, params, node, runner)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
-		y, err := evaluateExpr(e.Y, params, node, runner)
+		y, yDc, err := evaluateExpr(e.Y, params, node, runner)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		switch e.Op {
 		case token.ADD:
-			return x + y, nil
+			return x + y, xDc && yDc, nil
 		case token.SUB:
-			return x - y, nil
+			return x - y, xDc && yDc, nil
 		case token.MUL:
-			return x * y, nil
+			return x * y, xDc && yDc, nil
 		case token.QUO:
-			return x / y, nil
+			return x / y, xDc && yDc, nil
 		case token.REM:
-			return float64(int64(x) % int64(y)), nil
+			return float64(int64(x) % int64(y)), xDc && yDc, nil
 		default:
-			return 0, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), node)
+			return 0, false, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), node)
 		}
 	case *ast.UnaryExpr:
-		x, err := evaluateExpr(e.X, params, node, runner)
+		x, dc, err := evaluateExpr(e.X, params, node, runner)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		switch e.Op {
 		case token.SUB:
-			return -x, nil
+			return -x, dc, nil
 		default:
-			return 0, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), node)
+			return 0, false, newBulletmlError(fmt.Sprintf("Unsupported operator: %s", e.Op.String()), node)
 		}
 	case *ast.Ident:
 		switch e.Name {
 		case "$rand":
-			return runner.opts.Random.Float64(), nil
+			return runner.opts.Random.Float64(), false, nil
 		case "$rank":
-			return runner.opts.Rank, nil
+			return runner.opts.Rank, true, nil
 		case "$direction":
 			b := runner.bullet
 			if b.accelSpeedHorizontal == 0 && b.accelSpeedVertical == 0 {
-				return b.direction*180/math.Pi + 90, nil
+				return b.direction*180/math.Pi + 90, false, nil
 			} else {
 				vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
 				vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
-				return math.Atan2(vy, vx)*180/math.Pi + 90, nil
+				return math.Atan2(vy, vx)*180/math.Pi + 90, false, nil
 			}
 		case "$speed":
 			b := runner.bullet
 			if b.accelSpeedHorizontal == 0 && b.accelSpeedVertical == 0 {
-				return b.speed, nil
+				return b.speed, false, nil
 			} else {
 				vx := b.speed*math.Cos(b.direction) + b.accelSpeedHorizontal
 				vy := b.speed*math.Sin(b.direction) + b.accelSpeedVertical
-				return math.Sqrt(vx*vx + vy*vy), nil
+				return math.Sqrt(vx*vx + vy*vy), false, nil
 			}
 		default:
 			if v, exists := params[e.Name]; exists {
-				return v, nil
+				return v, true, nil
 			} else {
-				return 0, newBulletmlError(fmt.Sprintf("Invalid variable name: %s", e.Name), node)
+				return 0, false, newBulletmlError(fmt.Sprintf("Invalid variable name: %s", e.Name), node)
 			}
 		}
 	case *ast.CallExpr:
@@ -723,44 +748,46 @@ func evaluateExpr(expr ast.Expr, params parameters, node node, runner *runner) (
 		if !ok {
 			var buf bytes.Buffer
 			if err := format.Node(&buf, token.NewFileSet(), e.Fun); err != nil {
-				return 0, newBulletmlError(err.Error(), node)
+				return 0, false, newBulletmlError(err.Error(), node)
 			}
-			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", string(buf.Bytes())), node)
+			return 0, false, newBulletmlError(fmt.Sprintf("Unsupported function: %s", string(buf.Bytes())), node)
 		}
 
 		var args []float64
+		dc := true
 		for _, arg := range e.Args {
-			v, err := evaluateExpr(arg, params, node, runner)
+			v, d, err := evaluateExpr(arg, params, node, runner)
 			if err != nil {
-				return 0, err
+				return 0, false, err
 			}
 			args = append(args, v)
+			dc = dc && d
 		}
 
 		switch f.Name {
 		case "sin":
 			if len(args) < 1 {
-				return 0, newBulletmlError(fmt.Sprintf("Too few arguments for sin(): %d", len(args)), node)
+				return 0, false, newBulletmlError(fmt.Sprintf("Too few arguments for sin(): %d", len(args)), node)
 			}
 			arg := args[0] * math.Pi / 180
-			return math.Sin(arg), nil
+			return math.Sin(arg), dc, nil
 		case "cos":
 			if len(args) < 1 {
-				return 0, newBulletmlError(fmt.Sprintf("Too few arguments for cos(): %d", len(args)), node)
+				return 0, false, newBulletmlError(fmt.Sprintf("Too few arguments for cos(): %d", len(args)), node)
 			}
 			arg := args[0] * math.Pi / 180
-			return math.Cos(arg), nil
+			return math.Cos(arg), dc, nil
 		default:
-			return 0, newBulletmlError(fmt.Sprintf("Unsupported function: %s", f.Name), node)
+			return 0, false, newBulletmlError(fmt.Sprintf("Unsupported function: %s", f.Name), node)
 		}
 	case *ast.ParenExpr:
 		return evaluateExpr(e.X, params, node, runner)
 	default:
 		var buf bytes.Buffer
 		if err := format.Node(&buf, token.NewFileSet(), e); err != nil {
-			return 0, err
+			return 0, false, err
 		}
-		return 0, newBulletmlError(fmt.Sprintf("Unsupported expression: %s", string(buf.Bytes())), node)
+		return 0, false, newBulletmlError(fmt.Sprintf("Unsupported expression: %s", string(buf.Bytes())), node)
 	}
 }
 
