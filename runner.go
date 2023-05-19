@@ -363,8 +363,8 @@ type actionProcess struct {
 	action                   *Action
 	actionIndex              int
 	repeatIndex, repeatCount int
-	repeatAction             *Action
-	repeatParams             parameters
+	repeatActionCache        *Action
+	repeatParamsCache        parameters
 	params                   parameters
 	runner                   *runner
 }
@@ -414,40 +414,36 @@ func (p *actionProcess) update() error {
 					return err
 				}
 				p.repeatCount = int(repeat)
+			}
 
-				action, params, deterministic, err := p.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), p.params)
+			var action *Action
+			var params parameters
+			if p.repeatActionCache != nil {
+				action = p.repeatActionCache
+				params = p.repeatParamsCache
+			} else {
+				ac, prms, deterministic, err := p.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), p.params)
 				if err != nil {
 					return err
+				}
+
+				action = ac
+
+				params = make(parameters)
+				for k, v := range prms {
+					params[k] = v
 				}
 
 				if deterministic {
-					p.repeatAction = action
-
-					p.repeatParams = make(parameters)
-					for k, v := range params {
-						p.repeatParams[k] = v
-					}
-				}
-			}
-
-			if p.repeatAction == nil {
-				action, params, _, err := p.runner.lookUpActionDefTable(coalesce(c.Action, c.ActionRef).(node), p.params)
-				if err != nil {
-					return err
-				}
-
-				p.repeatAction = action
-
-				p.repeatParams = make(parameters)
-				for k, v := range params {
-					p.repeatParams[k] = v
+					p.repeatActionCache = action
+					p.repeatParamsCache = params
 				}
 			}
 
 			if p.repeatIndex < p.repeatCount {
-				p.repeatParams["$loop.index"] = float64(p.repeatIndex)
+				params["$loop.index"] = float64(p.repeatIndex)
 
-				p.runner.pushStack(p.repeatAction, p.repeatParams)
+				p.runner.pushStack(action, params)
 
 				p.repeatIndex++
 
@@ -455,8 +451,8 @@ func (p *actionProcess) update() error {
 			} else {
 				p.repeatIndex = 0
 				p.repeatCount = 0
-				p.repeatAction = nil
-				p.repeatParams = nil
+				p.repeatActionCache = nil
+				p.repeatParamsCache = nil
 			}
 		case *Fire, *FireRef:
 			fire, params, _, err := p.runner.lookUpFireDefTable(c.(node), p.params)
