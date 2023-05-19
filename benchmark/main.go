@@ -79,6 +79,24 @@ var testCases = map[string]string{
 		</action>
 	</bulletml>
 	`,
+
+	"wait": `
+	<bulletml>
+		<action label="top">
+			<repeat>
+				<times>1000</times>
+				<action>
+					<fire>
+						<bullet>
+							<action>` + strings.Repeat("<wait>0</wait>", loop) + `
+							</action>
+						</bullet>
+					</fire>
+				</action>
+			</repeat>
+		</action>
+	</bulletml>
+	`,
 }
 
 func main() {

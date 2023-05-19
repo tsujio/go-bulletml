@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"io"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -71,9 +72,9 @@ const (
 type BulletML struct {
 	XMLName xml.Name     `xml:"bulletml"`
 	Type    BulletMLType `xml:"type,attr"`
-	Bullets []Bullet     `xml:"bullet"`
-	Actions []Action     `xml:"action"`
-	Fires   []Fire       `xml:"fire"`
+	Bullets []*Bullet    `xml:"bullet"`
+	Actions []*Action    `xml:"action"`
+	Fires   []*Fire      `xml:"fire"`
 	Comment string       `xml:",comment"`
 }
 
@@ -109,53 +110,51 @@ func (b *BulletML) prepare() error {
 	return nil
 }
 
-func (b BulletML) parent() node {
+func (b *BulletML) parent() node {
 	return nil
 }
 
-func (b BulletML) xmlName() string {
+func (b *BulletML) xmlName() string {
 	return b.XMLName.Local
 }
 
 type Bullet struct {
-	XMLName      xml.Name   `xml:"bullet"`
-	Label        string     `xml:"label,attr,omitempty"`
-	Direction    *Direction `xml:"direction,omitempty"`
-	Speed        *Speed     `xml:"speed,omitempty"`
-	ActionOrRefs []any      `xml:",any"`
-	Comment      string     `xml:",comment"`
-	parentNode   node       `xml:"-"`
+	XMLName      xml.Name           `xml:"bullet"`
+	Label        string             `xml:"label,attr,omitempty"`
+	Direction    *Option[Direction] `xml:"direction,omitempty"`
+	Speed        *Option[Speed]     `xml:"speed,omitempty"`
+	ActionOrRefs []any              `xml:",any"`
+	Comment      string             `xml:",comment"`
+	parentNode   node               `xml:"-"`
 }
 
 func (b *Bullet) prepare() error {
-	if b.Direction != nil {
-		b.Direction.parentNode = b
-		if err := b.Direction.prepare(); err != nil {
+	if d, exists := b.Direction.Get(); exists {
+		d.parentNode = b
+		if err := d.prepare(); err != nil {
 			return err
 		}
 	}
 
-	if b.Speed != nil {
-		b.Speed.parentNode = b
-		if err := b.Speed.prepare(); err != nil {
+	if s, exists := b.Speed.Get(); exists {
+		s.parentNode = b
+		if err := s.prepare(); err != nil {
 			return err
 		}
 	}
 
 	for i := 0; i < len(b.ActionOrRefs); i++ {
 		switch a := b.ActionOrRefs[i].(type) {
-		case Action:
+		case *Action:
 			a.parentNode = b
 			if err := a.prepare(); err != nil {
 				return err
 			}
-			b.ActionOrRefs[i] = a
-		case ActionRef:
+		case *ActionRef:
 			a.parentNode = b
 			if err := a.prepare(); err != nil {
 				return err
 			}
-			b.ActionOrRefs[i] = a
 		default:
 			return newBulletmlError(fmt.Sprintf("Invalid child element of <%s>: %T", b.XMLName.Local, a), b)
 		}
@@ -164,11 +163,11 @@ func (b *Bullet) prepare() error {
 	return nil
 }
 
-func (b Bullet) parent() node {
+func (b *Bullet) parent() node {
 	return b.parentNode
 }
 
-func (b Bullet) xmlName() string {
+func (b *Bullet) xmlName() string {
 	return b.XMLName.Local
 }
 
@@ -180,6 +179,9 @@ func (b *Bullet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 			b.Label = attr.Value
 		}
 	}
+
+	b.Direction = &Option[Direction]{value: nil}
+	b.Speed = &Option[Speed]{value: nil}
 
 	for {
 		token, err := d.Token()
@@ -198,25 +200,25 @@ func (b *Bullet) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 				if err := d.DecodeElement(&dir, &s); err != nil {
 					return err
 				}
-				b.Direction = &dir
+				b.Direction = &Option[Direction]{value: &dir}
 			case "speed":
 				var spd Speed
 				if err := d.DecodeElement(&spd, &s); err != nil {
 					return err
 				}
-				b.Speed = &spd
+				b.Speed = &Option[Speed]{value: &spd}
 			case "action":
 				var a Action
 				if err := d.DecodeElement(&a, &s); err != nil {
 					return err
 				}
-				b.ActionOrRefs = append(b.ActionOrRefs, a)
+				b.ActionOrRefs = append(b.ActionOrRefs, &a)
 			case "actionRef":
 				var a ActionRef
 				if err := d.DecodeElement(&a, &s); err != nil {
 					return err
 				}
-				b.ActionOrRefs = append(b.ActionOrRefs, a)
+				b.ActionOrRefs = append(b.ActionOrRefs, &a)
 			default:
 				return fmt.Errorf("Unexpected element <%s> in <bullet>", s.Name.Local)
 			}
@@ -237,66 +239,56 @@ type Action struct {
 func (a *Action) prepare() error {
 	for i := 0; i < len(a.Commands); i++ {
 		switch c := a.Commands[i].(type) {
-		case Repeat:
+		case *Repeat:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case Fire:
+		case *Fire:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case FireRef:
+		case *FireRef:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case ChangeSpeed:
+		case *ChangeSpeed:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case ChangeDirection:
+		case *ChangeDirection:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case Accel:
+		case *Accel:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case Wait:
+		case *Wait:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case Vanish:
+		case *Vanish:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case Action:
+		case *Action:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
-		case ActionRef:
+		case *ActionRef:
 			c.parentNode = a
 			if err := c.prepare(); err != nil {
 				return err
 			}
-			a.Commands[i] = c
 		default:
 			return newBulletmlError(fmt.Sprintf("Invalid child element of <%s>: %T", a.XMLName.Local, c), a)
 		}
@@ -305,11 +297,11 @@ func (a *Action) prepare() error {
 	return nil
 }
 
-func (a Action) parent() node {
+func (a *Action) parent() node {
 	return a.parentNode
 }
 
-func (a Action) xmlName() string {
+func (a *Action) xmlName() string {
 	return a.XMLName.Local
 }
 
@@ -339,61 +331,61 @@ func (a *Action) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 				if err := d.DecodeElement(&r, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, r)
+				a.Commands = append(a.Commands, &r)
 			case "fire":
 				var f Fire
 				if err := d.DecodeElement(&f, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, f)
+				a.Commands = append(a.Commands, &f)
 			case "fireRef":
 				var f FireRef
 				if err := d.DecodeElement(&f, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, f)
+				a.Commands = append(a.Commands, &f)
 			case "changeSpeed":
 				var c ChangeSpeed
 				if err := d.DecodeElement(&c, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, c)
+				a.Commands = append(a.Commands, &c)
 			case "changeDirection":
 				var c ChangeDirection
 				if err := d.DecodeElement(&c, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, c)
+				a.Commands = append(a.Commands, &c)
 			case "accel":
 				var ac Accel
 				if err := d.DecodeElement(&ac, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, ac)
+				a.Commands = append(a.Commands, &ac)
 			case "wait":
 				var w Wait
 				if err := d.DecodeElement(&w, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, w)
+				a.Commands = append(a.Commands, &w)
 			case "vanish":
 				var v Vanish
 				if err := d.DecodeElement(&v, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, v)
+				a.Commands = append(a.Commands, &v)
 			case "action":
 				var ac Action
 				if err := d.DecodeElement(&ac, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, ac)
+				a.Commands = append(a.Commands, &ac)
 			case "actionRef":
 				var ac ActionRef
 				if err := d.DecodeElement(&ac, &s); err != nil {
 					return err
 				}
-				a.Commands = append(a.Commands, ac)
+				a.Commands = append(a.Commands, &ac)
 			default:
 				return fmt.Errorf("Unexpected element <%s> in <action>", s.Name.Local)
 			}
@@ -404,48 +396,53 @@ func (a *Action) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 }
 
 type Fire struct {
-	XMLName    xml.Name   `xml:"fire"`
-	Label      string     `xml:"label,attr,omitempty"`
-	Direction  *Direction `xml:"direction,omitempty"`
-	Speed      *Speed     `xml:"speed,omitempty"`
-	Bullet     *Bullet    `xml:"bullet,omitempty"`
-	BulletRef  *BulletRef `xml:"bulletRef,omitempty"`
-	Comment    string     `xml:",comment"`
-	parentNode node       `xml:"-"`
+	XMLName    xml.Name           `xml:"fire"`
+	Label      string             `xml:"label,attr,omitempty"`
+	Direction  *Option[Direction] `xml:"direction,omitempty"`
+	Speed      *Option[Speed]     `xml:"speed,omitempty"`
+	Bullet     *Option[Bullet]    `xml:"bullet,omitempty"`
+	BulletRef  *Option[BulletRef] `xml:"bulletRef,omitempty"`
+	Comment    string             `xml:",comment"`
+	parentNode node               `xml:"-"`
 }
 
 func (f *Fire) prepare() error {
-	if f.Direction != nil {
-		f.Direction.parentNode = f
-		if err := f.Direction.prepare(); err != nil {
+	if d, exists := f.Direction.Get(); exists {
+		d.parentNode = f
+		if err := d.prepare(); err != nil {
 			return err
 		}
 	}
 
-	if f.Speed != nil {
-		f.Speed.parentNode = f
-		if err := f.Speed.prepare(); err != nil {
+	if s, exists := f.Speed.Get(); exists {
+		s.parentNode = f
+		if err := s.prepare(); err != nil {
 			return err
 		}
 	}
 
-	if f.Bullet != nil && f.BulletRef != nil {
-		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", f.Bullet.XMLName.Local, f.BulletRef.XMLName.Local, f.XMLName.Local), f)
+	b, bulletExists := f.Bullet.Get()
+	br, bulletRefExists := f.BulletRef.Get()
+
+	if bulletExists && bulletRefExists {
+		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", b.XMLName.Local, br.XMLName.Local, f.XMLName.Local), f)
 	}
-	if f.Bullet == nil && f.BulletRef == nil {
-		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", f.Bullet.XMLName.Local, f.BulletRef.XMLName.Local, f.XMLName.Local), f)
+	if !bulletExists && !bulletRefExists {
+		b, _ := getFieldXmlName(f, "Bullet")
+		br, _ := getFieldXmlName(f, "BulletRef")
+		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", b, br, f.XMLName.Local), f)
 	}
 
-	if f.Bullet != nil {
-		f.Bullet.parentNode = f
-		if err := f.Bullet.prepare(); err != nil {
+	if bulletExists {
+		b.parentNode = f
+		if err := b.prepare(); err != nil {
 			return err
 		}
 	}
 
-	if f.BulletRef != nil {
-		f.BulletRef.parentNode = f
-		if err := f.BulletRef.prepare(); err != nil {
+	if bulletRefExists {
+		br.parentNode = f
+		if err := br.prepare(); err != nil {
 			return err
 		}
 	}
@@ -453,20 +450,46 @@ func (f *Fire) prepare() error {
 	return nil
 }
 
-func (f Fire) parent() node {
+func (f *Fire) parent() node {
 	return f.parentNode
 }
 
-func (f Fire) xmlName() string {
+func (f *Fire) xmlName() string {
 	return f.XMLName.Local
 }
 
+func (f *Fire) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type F Fire
+
+	var fr F
+	if err := d.DecodeElement(&fr, &start); err != nil {
+		return err
+	}
+
+	*f = Fire(fr)
+
+	if f.Direction == nil {
+		f.Direction = &Option[Direction]{value: nil}
+	}
+	if f.Speed == nil {
+		f.Speed = &Option[Speed]{value: nil}
+	}
+	if f.Bullet == nil {
+		f.Bullet = &Option[Bullet]{value: nil}
+	}
+	if f.BulletRef == nil {
+		f.BulletRef = &Option[BulletRef]{value: nil}
+	}
+
+	return nil
+}
+
 type ChangeDirection struct {
-	XMLName    xml.Name  `xml:"changeDirection"`
-	Direction  Direction `xml:"direction"`
-	Term       Term      `xml:"term"`
-	Comment    string    `xml:",comment"`
-	parentNode node      `xml:"-"`
+	XMLName    xml.Name   `xml:"changeDirection"`
+	Direction  *Direction `xml:"direction"`
+	Term       *Term      `xml:"term"`
+	Comment    string     `xml:",comment"`
+	parentNode node       `xml:"-"`
 }
 
 func (c *ChangeDirection) prepare() error {
@@ -483,18 +506,18 @@ func (c *ChangeDirection) prepare() error {
 	return nil
 }
 
-func (c ChangeDirection) parent() node {
+func (c *ChangeDirection) parent() node {
 	return c.parentNode
 }
 
-func (c ChangeDirection) xmlName() string {
+func (c *ChangeDirection) xmlName() string {
 	return c.XMLName.Local
 }
 
 type ChangeSpeed struct {
 	XMLName    xml.Name `xml:"changeSpeed"`
-	Speed      Speed    `xml:"speed"`
-	Term       Term     `xml:"term"`
+	Speed      *Speed   `xml:"speed"`
+	Term       *Term    `xml:"term"`
 	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
@@ -513,34 +536,34 @@ func (c *ChangeSpeed) prepare() error {
 	return nil
 }
 
-func (c ChangeSpeed) parent() node {
+func (c *ChangeSpeed) parent() node {
 	return c.parentNode
 }
 
-func (c ChangeSpeed) xmlName() string {
+func (c *ChangeSpeed) xmlName() string {
 	return c.XMLName.Local
 }
 
 type Accel struct {
-	XMLName    xml.Name    `xml:"accel"`
-	Horizontal *Horizontal `xml:"horizontal,omitempty"`
-	Vertical   *Vertical   `xml:"vertical,omitempty"`
-	Term       Term        `xml:"term"`
-	Comment    string      `xml:",comment"`
-	parentNode node        `xml:"-"`
+	XMLName    xml.Name            `xml:"accel"`
+	Horizontal *Option[Horizontal] `xml:"horizontal,omitempty"`
+	Vertical   *Option[Vertical]   `xml:"vertical,omitempty"`
+	Term       *Term               `xml:"term"`
+	Comment    string              `xml:",comment"`
+	parentNode node                `xml:"-"`
 }
 
 func (a *Accel) prepare() error {
-	if a.Horizontal != nil {
-		a.Horizontal.parentNode = a
-		if err := a.Horizontal.prepare(); err != nil {
+	if h, exists := a.Horizontal.Get(); exists {
+		h.parentNode = a
+		if err := h.prepare(); err != nil {
 			return err
 		}
 	}
 
-	if a.Vertical != nil {
-		a.Vertical.parentNode = a
-		if err := a.Vertical.prepare(); err != nil {
+	if v, exists := a.Vertical.Get(); exists {
+		v.parentNode = a
+		if err := v.prepare(); err != nil {
 			return err
 		}
 	}
@@ -553,11 +576,31 @@ func (a *Accel) prepare() error {
 	return nil
 }
 
-func (a Accel) parent() node {
+func (a *Accel) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type A Accel
+
+	var ac A
+	if err := d.DecodeElement(&ac, &start); err != nil {
+		return err
+	}
+
+	*a = Accel(ac)
+
+	if a.Horizontal == nil {
+		a.Horizontal = &Option[Horizontal]{value: nil}
+	}
+	if a.Vertical == nil {
+		a.Vertical = &Option[Vertical]{value: nil}
+	}
+
+	return nil
+}
+
+func (a *Accel) parent() node {
 	return a.parentNode
 }
 
-func (a Accel) xmlName() string {
+func (a *Accel) xmlName() string {
 	return a.XMLName.Local
 }
 
@@ -579,11 +622,11 @@ func (w *Wait) prepare() error {
 	return nil
 }
 
-func (w Wait) parent() node {
+func (w *Wait) parent() node {
 	return w.parentNode
 }
 
-func (w Wait) xmlName() string {
+func (w *Wait) xmlName() string {
 	return w.XMLName.Local
 }
 
@@ -597,21 +640,21 @@ func (v *Vanish) prepare() error {
 	return nil
 }
 
-func (v Vanish) parent() node {
+func (v *Vanish) parent() node {
 	return v.parentNode
 }
 
-func (v Vanish) xmlName() string {
+func (v *Vanish) xmlName() string {
 	return v.XMLName.Local
 }
 
 type Repeat struct {
-	XMLName    xml.Name   `xml:"repeat"`
-	Times      Times      `xml:"times"`
-	Action     *Action    `xml:"action,omitempty"`
-	ActionRef  *ActionRef `xml:"actionRef,omitempty"`
-	Comment    string     `xml:",comment"`
-	parentNode node       `xml:"-"`
+	XMLName    xml.Name           `xml:"repeat"`
+	Times      *Times             `xml:"times"`
+	Action     *Option[Action]    `xml:"action,omitempty"`
+	ActionRef  *Option[ActionRef] `xml:"actionRef,omitempty"`
+	Comment    string             `xml:",comment"`
+	parentNode node               `xml:"-"`
 }
 
 func (r *Repeat) prepare() error {
@@ -620,23 +663,28 @@ func (r *Repeat) prepare() error {
 		return err
 	}
 
-	if r.Action != nil && r.ActionRef != nil {
-		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", r.Action.XMLName.Local, r.ActionRef.XMLName.Local, r.XMLName.Local), r)
+	a, actionExists := r.Action.Get()
+	ar, actionRefExists := r.ActionRef.Get()
+
+	if actionExists && actionRefExists {
+		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", a.XMLName.Local, ar.XMLName.Local, r.XMLName.Local), r)
 	}
-	if r.Action == nil && r.ActionRef == nil {
-		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", r.Action.XMLName.Local, r.ActionRef.XMLName.Local, r.XMLName.Local), r)
+	if !actionExists && !actionRefExists {
+		a, _ := getFieldXmlName(r, "Action")
+		ar, _ := getFieldXmlName(r, "ActionRef")
+		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", a, ar, r.XMLName.Local), r)
 	}
 
-	if r.Action != nil {
-		r.Action.parentNode = r
-		if err := r.Action.prepare(); err != nil {
+	if actionExists {
+		a.parentNode = r
+		if err := a.prepare(); err != nil {
 			return err
 		}
 	}
 
-	if r.ActionRef != nil {
-		r.ActionRef.parentNode = r
-		if err := r.ActionRef.prepare(); err != nil {
+	if actionRefExists {
+		ar.parentNode = r
+		if err := ar.prepare(); err != nil {
 			return err
 		}
 	}
@@ -644,12 +692,32 @@ func (r *Repeat) prepare() error {
 	return nil
 }
 
-func (r Repeat) parent() node {
+func (r *Repeat) parent() node {
 	return r.parentNode
 }
 
-func (r Repeat) xmlName() string {
+func (r *Repeat) xmlName() string {
 	return r.XMLName.Local
+}
+
+func (r *Repeat) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type R Repeat
+
+	var rp R
+	if err := d.DecodeElement(&rp, &start); err != nil {
+		return err
+	}
+
+	*r = Repeat(rp)
+
+	if r.Action == nil {
+		r.Action = &Option[Action]{value: nil}
+	}
+	if r.ActionRef == nil {
+		r.ActionRef = &Option[ActionRef]{value: nil}
+	}
+
+	return nil
 }
 
 type DirectionType string
@@ -687,11 +755,11 @@ func (d *Direction) prepare() error {
 	return nil
 }
 
-func (d Direction) parent() node {
+func (d *Direction) parent() node {
 	return d.parentNode
 }
 
-func (d Direction) xmlName() string {
+func (d *Direction) xmlName() string {
 	return d.XMLName.Local
 }
 
@@ -729,11 +797,11 @@ func (s *Speed) prepare() error {
 	return nil
 }
 
-func (s Speed) parent() node {
+func (s *Speed) parent() node {
 	return s.parentNode
 }
 
-func (s Speed) xmlName() string {
+func (s *Speed) xmlName() string {
 	return s.XMLName.Local
 }
 
@@ -771,11 +839,11 @@ func (h *Horizontal) prepare() error {
 	return nil
 }
 
-func (h Horizontal) parent() node {
+func (h *Horizontal) parent() node {
 	return h.parentNode
 }
 
-func (h Horizontal) xmlName() string {
+func (h *Horizontal) xmlName() string {
 	return h.XMLName.Local
 }
 
@@ -813,11 +881,11 @@ func (v *Vertical) prepare() error {
 	return nil
 }
 
-func (v Vertical) parent() node {
+func (v *Vertical) parent() node {
 	return v.parentNode
 }
 
-func (v Vertical) xmlName() string {
+func (v *Vertical) xmlName() string {
 	return v.XMLName.Local
 }
 
@@ -839,11 +907,11 @@ func (t *Term) prepare() error {
 	return nil
 }
 
-func (t Term) parent() node {
+func (t *Term) parent() node {
 	return t.parentNode
 }
 
-func (t Term) xmlName() string {
+func (t *Term) xmlName() string {
 	return t.XMLName.Local
 }
 
@@ -865,18 +933,18 @@ func (t *Times) prepare() error {
 	return nil
 }
 
-func (t Times) parent() node {
+func (t *Times) parent() node {
 	return t.parentNode
 }
 
-func (t Times) xmlName() string {
+func (t *Times) xmlName() string {
 	return t.XMLName.Local
 }
 
 type BulletRef struct {
 	XMLName    xml.Name `xml:"bulletRef"`
 	Label      string   `xml:"label,attr"`
-	Params     []Param  `xml:"param"`
+	Params     []*Param `xml:"param"`
 	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
@@ -896,26 +964,26 @@ func (b *BulletRef) prepare() error {
 	return nil
 }
 
-func (b BulletRef) parent() node {
+func (b *BulletRef) parent() node {
 	return b.parentNode
 }
 
-func (b BulletRef) xmlName() string {
+func (b *BulletRef) xmlName() string {
 	return b.XMLName.Local
 }
 
-func (b BulletRef) label() string {
+func (b *BulletRef) label() string {
 	return b.Label
 }
 
-func (b BulletRef) params() []Param {
+func (b *BulletRef) params() []*Param {
 	return b.Params
 }
 
 type ActionRef struct {
 	XMLName    xml.Name `xml:"actionRef"`
 	Label      string   `xml:"label,attr"`
-	Params     []Param  `xml:"param"`
+	Params     []*Param `xml:"param"`
 	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
@@ -935,26 +1003,26 @@ func (a *ActionRef) prepare() error {
 	return nil
 }
 
-func (a ActionRef) parent() node {
+func (a *ActionRef) parent() node {
 	return a.parentNode
 }
 
-func (a ActionRef) xmlName() string {
+func (a *ActionRef) xmlName() string {
 	return a.XMLName.Local
 }
 
-func (a ActionRef) label() string {
+func (a *ActionRef) label() string {
 	return a.Label
 }
 
-func (a ActionRef) params() []Param {
+func (a *ActionRef) params() []*Param {
 	return a.Params
 }
 
 type FireRef struct {
 	XMLName    xml.Name `xml:"fireRef"`
 	Label      string   `xml:"label,attr"`
-	Params     []Param  `xml:"param"`
+	Params     []*Param `xml:"param"`
 	Comment    string   `xml:",comment"`
 	parentNode node     `xml:"-"`
 }
@@ -974,19 +1042,19 @@ func (f *FireRef) prepare() error {
 	return nil
 }
 
-func (f FireRef) parent() node {
+func (f *FireRef) parent() node {
 	return f.parentNode
 }
 
-func (f FireRef) xmlName() string {
+func (f *FireRef) xmlName() string {
 	return f.XMLName.Local
 }
 
-func (f FireRef) label() string {
+func (f *FireRef) label() string {
 	return f.Label
 }
 
-func (f FireRef) params() []Param {
+func (f *FireRef) params() []*Param {
 	return f.Params
 }
 
@@ -1008,11 +1076,11 @@ func (p *Param) prepare() error {
 	return nil
 }
 
-func (p Param) parent() node {
+func (p *Param) parent() node {
 	return p.parentNode
 }
 
-func (p Param) xmlName() string {
+func (p *Param) xmlName() string {
 	return p.XMLName.Local
 }
 
@@ -1024,7 +1092,40 @@ type node interface {
 type refType interface {
 	node
 	label() string
-	params() []Param
+	params() []*Param
+}
+
+func getFieldXmlName(ptr any, fieldName string) (string, error) {
+	t := reflect.TypeOf(ptr).Elem()
+
+	f, ok := t.FieldByName("Bullet")
+	if !ok {
+		return "", fmt.Errorf("%s has no field '%s'", t.Name(), fieldName)
+	}
+	return strings.Split(f.Tag.Get("xml"), ",")[0], nil
+}
+
+type Option[T any] struct {
+	value *T
+}
+
+func (o *Option[T]) Get() (*T, bool) {
+	if o.value != nil {
+		return o.value, true
+	} else {
+		return nil, false
+	}
+}
+
+func (o *Option[T]) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var v T
+	if err := d.DecodeElement(&v, &start); err != nil {
+		return err
+	}
+
+	o.value = &v
+
+	return nil
 }
 
 func compileExpr(expr string, node node) (ast.Expr, error) {
