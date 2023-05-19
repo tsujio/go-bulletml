@@ -149,7 +149,8 @@ func (m *multiRunner) Update() error {
 	for _, r := range m.runners {
 		if err := r.Update(); err != nil {
 			return err
-		} else if !r.completed() {
+		}
+		if !r.completed() {
 			_runners = append(_runners, r)
 		}
 	}
@@ -202,6 +203,8 @@ type runner struct {
 	accelVerticalDelta, accelVerticalTarget     float64
 
 	lastShoot *bulletModel
+
+	allActionsCompleted bool
 }
 
 func createRunner(config *runnerConfig, bullet *bulletModel) *runner {
@@ -327,17 +330,23 @@ func (r *runner) Update() error {
 
 	r.config.updateBulletPosition(r)
 
+	if !r.allActionsCompleted {
+		if len(r.stack) == 0 &&
+			r.ticks > r.waitUntil &&
+			r.ticks > r.changeSpeedUntil &&
+			r.ticks > r.changeDirectionUntil &&
+			r.ticks > r.accelUntil {
+			r.allActionsCompleted = true
+		}
+	}
+
 	r.ticks++
 
 	return nil
 }
 
 func (r *runner) completed() bool {
-	return len(r.stack) == 0 &&
-		r.ticks > r.waitUntil &&
-		r.ticks > r.changeSpeedUntil &&
-		r.ticks > r.changeDirectionUntil &&
-		r.ticks > r.accelUntil
+	return r.allActionsCompleted
 }
 
 func (r *runner) Position() (float64, float64) {
@@ -369,10 +378,11 @@ func updateBulletPosition(r *runner) {
 	if !r.bullet.vanished {
 		var vx, vy float64
 		if r.bulletPrev == nil ||
-			r.bulletPrev.speed != r.bullet.speed ||
-			r.bulletPrev.direction != r.bullet.direction ||
-			r.bulletPrev.accelSpeedHorizontal != r.bullet.accelSpeedHorizontal ||
-			r.bulletPrev.accelSpeedVertical != r.bullet.accelSpeedVertical {
+			!r.completed() &&
+				(r.bulletPrev.speed != r.bullet.speed ||
+					r.bulletPrev.direction != r.bullet.direction ||
+					r.bulletPrev.accelSpeedHorizontal != r.bullet.accelSpeedHorizontal ||
+					r.bulletPrev.accelSpeedVertical != r.bullet.accelSpeedVertical) {
 			vx = r.bullet.speed*math.Cos(r.bullet.direction) + r.bullet.accelSpeedHorizontal
 			vy = r.bullet.speed*math.Sin(r.bullet.direction) + r.bullet.accelSpeedVertical
 			r.bulletVxCache = vx
@@ -384,13 +394,13 @@ func updateBulletPosition(r *runner) {
 
 		r.bullet.x += vx
 		r.bullet.y += vy
-	}
 
-	if r.bulletPrev == nil {
-		b := *r.bullet
-		r.bulletPrev = &b
-	} else {
-		*r.bulletPrev = *r.bullet
+		if r.bulletPrev == nil {
+			b := *r.bullet
+			r.bulletPrev = &b
+		} else if !r.completed() {
+			*r.bulletPrev = *r.bullet
+		}
 	}
 }
 
