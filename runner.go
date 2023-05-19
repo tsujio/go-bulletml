@@ -546,8 +546,7 @@ func (f *actionProcessFrame) update() error {
 				Bullet: bullet,
 			})
 
-			lastShoot := *bulletRunner.bullet
-			f.actionProcess.lastShoot = &lastShoot
+			*f.actionProcess.lastShoot = *bulletRunner.bullet
 		case ChangeSpeed:
 			term, _, err := evaluateExpr(c.Term.compiledExpr, f.params, &c.Term, f.actionProcess.runner)
 			if err != nil {
