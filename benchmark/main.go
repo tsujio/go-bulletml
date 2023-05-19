@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/tsujio/go-bulletml"
 )
+
+const loop = 10000
 
 var testCases = map[string]string{
 	"nop": `
@@ -36,8 +39,9 @@ var testCases = map[string]string{
 						<bullet>
 							<action>
 								<repeat>
-									<times>1000</times>
+									<times>` + strconv.Itoa(loop) + `</times>
 									<action>
+										<wait>0</wait>
 									</action>
 								</repeat>
 							</action>
@@ -45,6 +49,33 @@ var testCases = map[string]string{
 					</fire>
 				</action>
 			</repeat>
+		</action>
+	</bulletml>
+	`,
+
+	"fire": `
+	<bulletml>
+		<action label="top">
+			<fire>
+				<bullet>
+					<action>
+						<repeat>
+							<times>` + strconv.Itoa(loop) + `</times>
+							<action>
+								<repeat>
+									<times>100</times>
+									<action>
+										<fire>
+											<bullet />
+										</fire>
+									</action>
+								</repeat>
+								<wait>0</wait>
+							</action>
+						</repeat>
+					</action>
+				</bullet>
+			</fire>
 		</action>
 	</bulletml>
 	`,
@@ -82,12 +113,12 @@ func main() {
 		panic(err)
 	}
 
-	const loop = 10000
+	_runners := runners[:]
 
 	start := time.Now().UnixNano()
 
 	for i := 0; i < loop; i++ {
-		for _, r := range runners {
+		for _, r := range _runners {
 			if err := r.Update(); err != nil {
 				panic(err)
 			}
@@ -98,7 +129,7 @@ func main() {
 
 	json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"testCase":    os.Args[1],
-		"bulletCount": len(runners),
+		"bulletCount": len(_runners),
 		"loopCount":   loop,
 		"elapsedNano": end - start,
 	})
