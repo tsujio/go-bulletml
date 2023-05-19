@@ -184,7 +184,6 @@ type runner struct {
 	config *runnerConfig
 
 	bullet                       *bulletModel
-	bulletPrev                   *bulletModel
 	bulletVxCache, bulletVyCache float64
 
 	ticks int
@@ -211,6 +210,8 @@ func createRunner(config *runnerConfig, bullet *bulletModel) *runner {
 	r := &runner{
 		config:               config,
 		bullet:               bullet,
+		bulletVxCache:        math.NaN(),
+		bulletVyCache:        math.NaN(),
 		waitUntil:            -1,
 		changeSpeedUntil:     -1,
 		changeDirectionUntil: -1,
@@ -310,22 +311,28 @@ func (r *runner) Update() error {
 
 	if r.ticks < r.changeSpeedUntil {
 		r.bullet.speed += r.changeSpeedDelta
+		r.bulletVxCache, r.bulletVyCache = math.NaN(), math.NaN()
 	} else if r.ticks == r.changeSpeedUntil {
 		r.bullet.speed = r.changeSpeedTarget
+		r.bulletVxCache, r.bulletVyCache = math.NaN(), math.NaN()
 	}
 
 	if r.ticks < r.changeDirectionUntil {
 		r.bullet.direction += r.changeDirectionDelta
+		r.bulletVxCache, r.bulletVyCache = math.NaN(), math.NaN()
 	} else if r.ticks == r.changeDirectionUntil {
 		r.bullet.direction = r.changeDirectionTarget
+		r.bulletVxCache, r.bulletVyCache = math.NaN(), math.NaN()
 	}
 
 	if r.ticks < r.accelUntil {
 		r.bullet.accelSpeedHorizontal += r.accelHorizontalDelta
 		r.bullet.accelSpeedVertical += r.accelVerticalDelta
+		r.bulletVxCache, r.bulletVyCache = math.NaN(), math.NaN()
 	} else if r.ticks == r.accelUntil {
 		r.bullet.accelSpeedHorizontal = r.accelHorizontalTarget
 		r.bullet.accelSpeedVertical = r.accelVerticalTarget
+		r.bulletVxCache, r.bulletVyCache = math.NaN(), math.NaN()
 	}
 
 	r.config.updateBulletPosition(r)
@@ -377,12 +384,7 @@ var (
 func updateBulletPosition(r *runner) {
 	if !r.bullet.vanished {
 		var vx, vy float64
-		if r.bulletPrev == nil ||
-			!r.completed() &&
-				(r.bulletPrev.speed != r.bullet.speed ||
-					r.bulletPrev.direction != r.bullet.direction ||
-					r.bulletPrev.accelSpeedHorizontal != r.bullet.accelSpeedHorizontal ||
-					r.bulletPrev.accelSpeedVertical != r.bullet.accelSpeedVertical) {
+		if math.IsNaN(r.bulletVxCache) || math.IsNaN(r.bulletVyCache) {
 			vx = r.bullet.speed*math.Cos(r.bullet.direction) + r.bullet.accelSpeedHorizontal
 			vy = r.bullet.speed*math.Sin(r.bullet.direction) + r.bullet.accelSpeedVertical
 			r.bulletVxCache = vx
@@ -394,13 +396,6 @@ func updateBulletPosition(r *runner) {
 
 		r.bullet.x += vx
 		r.bullet.y += vy
-
-		if r.bulletPrev == nil {
-			b := *r.bullet
-			r.bulletPrev = &b
-		} else if !r.completed() {
-			*r.bulletPrev = *r.bullet
-		}
 	}
 }
 
