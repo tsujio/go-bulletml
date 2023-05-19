@@ -138,14 +138,16 @@ type bulletModel struct {
 }
 
 type runner struct {
-	bulletML             *BulletML
-	opts                 *NewRunnerOptions
-	bullet               *bulletModel
-	updateBulletPosition func(*runner)
-	actionProcesses      []*actionProcess
-	actionDefTable       map[string]*Action
-	fireDefTable         map[string]*Fire
-	bulletDefTable       map[string]*Bullet
+	bulletML                     *BulletML
+	opts                         *NewRunnerOptions
+	bullet                       *bulletModel
+	bulletPrev                   *bulletModel
+	bulletVxCache, bulletVyCache float64
+	updateBulletPosition         func(*runner)
+	actionProcesses              []*actionProcess
+	actionDefTable               map[string]*Action
+	fireDefTable                 map[string]*Fire
+	bulletDefTable               map[string]*Bullet
 }
 
 func (r *runner) createActionProcess(action *Action, params parameters) *actionProcess {
@@ -498,10 +500,30 @@ func (f *actionProcessFrame) update() error {
 				},
 				updateBulletPosition: func(r *runner) {
 					if !r.bullet.vanished {
-						r.bullet.x += r.bullet.speed * math.Cos(r.bullet.direction)
-						r.bullet.y += r.bullet.speed * math.Sin(r.bullet.direction)
-						r.bullet.x += r.bullet.accelSpeedHorizontal
-						r.bullet.y += r.bullet.accelSpeedVertical
+						var vx, vy float64
+						if r.bulletPrev == nil ||
+							r.bulletPrev.speed != r.bullet.speed ||
+							r.bulletPrev.direction != r.bullet.direction ||
+							r.bulletPrev.accelSpeedHorizontal != r.bullet.accelSpeedHorizontal ||
+							r.bulletPrev.accelSpeedVertical != r.bullet.accelSpeedVertical {
+							vx = r.bullet.speed*math.Cos(r.bullet.direction) + r.bullet.accelSpeedHorizontal
+							vy = r.bullet.speed*math.Sin(r.bullet.direction) + r.bullet.accelSpeedVertical
+							r.bulletVxCache = vx
+							r.bulletVyCache = vy
+						} else {
+							vx = r.bulletVxCache
+							vy = r.bulletVyCache
+						}
+
+						r.bullet.x += vx
+						r.bullet.y += vy
+					}
+
+					if r.bulletPrev == nil {
+						b := *r.bullet
+						r.bulletPrev = &b
+					} else {
+						*r.bulletPrev = *r.bullet
 					}
 				},
 				actionDefTable: f.actionProcess.runner.actionDefTable,
