@@ -201,7 +201,7 @@ type runner struct {
 	accelHorizontalDelta, accelHorizontalTarget float64
 	accelVerticalDelta, accelVerticalTarget     float64
 
-	lastShoot *bulletModel
+	lastFireDirection, lastFireSpeed float64
 
 	allActionsCompleted bool
 }
@@ -216,7 +216,6 @@ func createRunner(config *runnerConfig, bullet *bulletModel) *runner {
 		changeSpeedUntil:     -1,
 		changeDirectionUntil: -1,
 		accelUntil:           -1,
-		lastShoot:            &bulletModel{},
 	}
 
 	return r
@@ -490,7 +489,7 @@ func (p *actionProcess) update() error {
 				case DirectionTypeRelative:
 					dir += p.runner.bullet.direction
 				case DirectionTypeSequence:
-					dir += p.runner.lastShoot.direction
+					dir += p.runner.lastFireDirection
 				default:
 					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", d.Type, d.XMLName.Local), d)
 				}
@@ -519,7 +518,7 @@ func (p *actionProcess) update() error {
 				case SpeedTypeRelative:
 					speed += p.runner.bullet.speed
 				case SpeedTypeSequence:
-					speed += p.runner.lastShoot.speed
+					speed += p.runner.lastFireSpeed
 				default:
 					return newBulletmlError(fmt.Sprintf("Invalid type '%s' for <%s> element", s.Type, s.XMLName.Local), s)
 				}
@@ -551,7 +550,8 @@ func (p *actionProcess) update() error {
 				Bullet: bullet,
 			})
 
-			*p.runner.lastShoot = *bulletRunner.bullet
+			p.runner.lastFireDirection = bulletRunner.bullet.direction
+			p.runner.lastFireSpeed = bulletRunner.bullet.speed
 		case *ChangeSpeed:
 			term, _, err := evaluateExpr(c.Term.compiledExpr, p.params, c.Term, p.runner)
 			if err != nil {
