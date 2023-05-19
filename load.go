@@ -428,9 +428,7 @@ func (f *Fire) prepare() error {
 		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", b.XMLName.Local, br.XMLName.Local, f.XMLName.Local), f)
 	}
 	if !bulletExists && !bulletRefExists {
-		b, _ := getFieldXmlName(f, "Bullet")
-		br, _ := getFieldXmlName(f, "BulletRef")
-		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", b, br, f.XMLName.Local), f)
+		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", getFieldXmlName(f, "Bullet"), getFieldXmlName(f, "BulletRef"), f.XMLName.Local), f)
 	}
 
 	if bulletExists {
@@ -493,11 +491,17 @@ type ChangeDirection struct {
 }
 
 func (c *ChangeDirection) prepare() error {
+	if c.Direction == nil {
+		return newBulletmlError(fmt.Sprintf("<%s> required in <%s>", getFieldXmlName(c, "Direction"), c.XMLName.Local), c)
+	}
 	c.Direction.parentNode = c
 	if err := c.Direction.prepare(); err != nil {
 		return err
 	}
 
+	if c.Term == nil {
+		return newBulletmlError(fmt.Sprintf("<%s> required in <%s>", getFieldXmlName(c, "Term"), c.XMLName.Local), c)
+	}
 	c.Term.parentNode = c
 	if err := c.Term.prepare(); err != nil {
 		return err
@@ -523,11 +527,17 @@ type ChangeSpeed struct {
 }
 
 func (c *ChangeSpeed) prepare() error {
+	if c.Speed == nil {
+		return newBulletmlError(fmt.Sprintf("<%s> required in <%s>", getFieldXmlName(c, "Speed"), c.XMLName.Local), c)
+	}
 	c.Speed.parentNode = c
 	if err := c.Speed.prepare(); err != nil {
 		return err
 	}
 
+	if c.Term == nil {
+		return newBulletmlError(fmt.Sprintf("<%s> required in <%s>", getFieldXmlName(c, "Term"), c.XMLName.Local), c)
+	}
 	c.Term.parentNode = c
 	if err := c.Term.prepare(); err != nil {
 		return err
@@ -568,6 +578,9 @@ func (a *Accel) prepare() error {
 		}
 	}
 
+	if a.Term == nil {
+		return newBulletmlError(fmt.Sprintf("<%s> required in <%s>", getFieldXmlName(a, "Term"), a.XMLName.Local), a)
+	}
 	a.Term.parentNode = a
 	if err := a.Term.prepare(); err != nil {
 		return err
@@ -658,6 +671,9 @@ type Repeat struct {
 }
 
 func (r *Repeat) prepare() error {
+	if r.Times == nil {
+		return newBulletmlError(fmt.Sprintf("<%s> required in <%s>", getFieldXmlName(r, "Times"), r.XMLName.Local), r)
+	}
 	r.Times.parentNode = r
 	if err := r.Times.prepare(); err != nil {
 		return err
@@ -670,9 +686,7 @@ func (r *Repeat) prepare() error {
 		return newBulletmlError(fmt.Sprintf("Both <%s> and <%s> exist in <%s> element", a.XMLName.Local, ar.XMLName.Local, r.XMLName.Local), r)
 	}
 	if !actionExists && !actionRefExists {
-		a, _ := getFieldXmlName(r, "Action")
-		ar, _ := getFieldXmlName(r, "ActionRef")
-		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", a, ar, r.XMLName.Local), r)
+		return newBulletmlError(fmt.Sprintf("Either <%s> or <%s> required in <%s> element", getFieldXmlName(r, "Action"), getFieldXmlName(r, "ActionRef"), r.XMLName.Local), r)
 	}
 
 	if actionExists {
@@ -1095,14 +1109,14 @@ type refType interface {
 	params() []*Param
 }
 
-func getFieldXmlName(ptr any, fieldName string) (string, error) {
+func getFieldXmlName(ptr any, fieldName string) string {
 	t := reflect.TypeOf(ptr).Elem()
 
-	f, ok := t.FieldByName("Bullet")
+	f, ok := t.FieldByName(fieldName)
 	if !ok {
-		return "", fmt.Errorf("%s has no field '%s'", t.Name(), fieldName)
+		panic(fmt.Sprintf("%s has no field '%s'", t.Name(), fieldName))
 	}
-	return strings.Split(f.Tag.Get("xml"), ",")[0], nil
+	return strings.Split(f.Tag.Get("xml"), ",")[0]
 }
 
 type Option[T any] struct {
